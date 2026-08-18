@@ -1,52 +1,49 @@
 # -*- coding: utf-8 -*-
-"""
-Advanced Bot Hosting Platform
-Version: 3.0.0
-Features:
-- Modern UI with pagination
-- Multi-language support
-- Advanced process management
-- Resource monitoring
-- Backup system
-- Auto-restart on crash
-- Web dashboard
-- And much more
-"""
-
 import telebot
 import subprocess
 import os
 import sys
-import json
-import time
-import logging
-import threading
-import sqlite3
-import shutil
-import tempfile
 import zipfile
-import re
-import signal
+import tempfile
+import shutil
+import time
 import psutil
+import sqlite3
+import json
+import logging
+import signal
+import threading
+import re
+import atexit
 import requests
 import hashlib
 import mimetypes
 import struct
 import uuid
-import asyncio
 import socket
 import platform
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple, Any
-from dataclasses import dataclass, asdict
-from enum import Enum
-from flask import Flask, jsonify, request, render_template_string
-from threading import Thread
-from collections import defaultdict
 import base64
 import random
 import string
 import functools
+from contextlib import contextmanager
+from typing import Dict, List, Optional, Tuple, Any
+from dataclasses import dataclass, asdict
+from enum import Enum
+from datetime import datetime, timedelta
+from telebot import types
+from flask import Flask, jsonify, request, render_template_string
+from threading import Thread
+from collections import defaultdict
+
+# Set encoding
+os.environ["PYTHONIOENCODING"] = "utf-8"
+
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except:
+    pass
 
 # ============================================================
 # CONFIGURATION
@@ -77,13 +74,13 @@ class Config:
     OWNER_LIMIT = float('inf')
     
     # Timeouts
-    PROCESS_TIMEOUT = 300  # 5 minutes
-    MAX_LOG_SIZE = 5 * 1024 * 1024  # 5MB
-    MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+    PROCESS_TIMEOUT = 300
+    MAX_LOG_SIZE = 5 * 1024 * 1024
+    MAX_FILE_SIZE = 50 * 1024 * 1024
     
     # Auto cleanup
-    AUTO_CLEANUP_INTERVAL = 3600  # 1 hour
-    INACTIVE_PROCESS_TIMEOUT = 7200  # 2 hours
+    AUTO_CLEANUP_INTERVAL = 3600
+    INACTIVE_PROCESS_TIMEOUT = 7200
     
     # Web dashboard
     WEB_PORT = 8080
@@ -92,45 +89,68 @@ class Config:
     # Language
     DEFAULT_LANG = 'en'
     
-    LANGUAGES = {
-        'en': {
-            'name': 'English',
-            'welcome': '🚀 Welcome to Bot Hosting Platform!',
-            'start': '🌟 Bot Started Successfully',
-            'help': '📚 Help & Support',
-            'settings': '⚙️ Settings',
-            'files': '📂 My Files',
-            'upload': '📤 Upload File',
-            'stats': '📊 Statistics',
-            'profile': '👤 Profile',
-            'support': '🆘 Support',
-            'premium': '💎 Premium',
-            'back': '🔙 Back',
-            'refresh': '🔄 Refresh',
-            'delete': '🗑️ Delete',
-            'start_bot': '▶️ Start',
-            'stop_bot': '⏹️ Stop',
-            'restart_bot': '🔄 Restart',
-            'logs': '📜 Logs',
-            'download': '📥 Download',
-            'close': '❌ Close',
-        },
-        'hi': {
-            'name': 'हिन्दी',
-            'welcome': '🚀 बॉट होस्टिंग प्लेटफॉर्म में आपका स्वागत है!',
-            'start': '🌟 बॉट सफलतापूर्वक शुरू हुआ',
-            'help': '📚 मदद और सहायता',
-            'settings': '⚙️ सेटिंग्स',
-            'files': '📂 मेरी फाइलें',
-            'upload': '📤 फाइल अपलोड करें',
-            'stats': '📊 आंकड़े',
-            'profile': '👤 प्रोफाइल',
-            'support': '🆘 सहायता',
-            'premium': '💎 प्रीमियम',
-        }
-    }
+    # Malware Detection
+    MALWARE_SIGNATURES = [
+        b'MZ',
+        b'\x7fELF',
+        b'\xfe\xed\xfa',
+        b'\xce\xfa\xed\xfe',
+        b'PK',
+        b'Rar!',
+    ]
+    
+    ENCRYPTED_FILE_INDICATORS = [
+        b'openssl',
+        b'encrypted',
+        b'cipher',
+        b'DES',
+        b'RSA',
+        b'GPG',
+        b'PGP',
+    ]
+    
+    SUSPICIOUS_KEYWORDS = [
+        b'ransomware',
+        b'trojan',
+        b'virus',
+        b'malware',
+        b'backdoor',
+        b'exploit',
+        b'payload',
+        b'botnet',
+        b'keylogger',
+        b'rootkit',
+    ]
 
 config = Config()
+
+# ============================================================
+# FLASK KEEP ALIVE
+# ============================================================
+
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "🤖 Bot is running...."
+
+@app.route('/stats')
+def stats():
+    return jsonify({
+        'status': 'online',
+        'timestamp': datetime.now().isoformat(),
+        'version': '3.0.0'
+    })
+
+def run_flask():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = Thread(target=run_flask)
+    t.daemon = True
+    t.start()
+    print("Flask Keep-Alive server started.")
 
 # ============================================================
 # DATABASE MANAGER
@@ -147,6 +167,7 @@ class DatabaseManager:
     @contextmanager
     def get_connection(self):
         """Context manager for database connections"""
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=30)
         conn.row_factory = sqlite3.Row
         try:
@@ -159,7 +180,6 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Version tracking
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS schema_version (
                     version INTEGER PRIMARY KEY,
@@ -167,12 +187,10 @@ class DatabaseManager:
                 )
             ''')
             
-            # Check current version
             cursor.execute('SELECT MAX(version) FROM schema_version')
             row = cursor.fetchone()
             current_version = row[0] if row and row[0] else 0
             
-            # Run migrations
             migrations = [
                 self._migration_v1,
                 self._migration_v2,
@@ -191,7 +209,6 @@ class DatabaseManager:
                     logging.info(f"Migration v{version} complete")
     
     def _migration_v1(self, cursor):
-        """Initial schema"""
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
@@ -211,8 +228,7 @@ class DatabaseManager:
                 user_id INTEGER PRIMARY KEY,
                 expiry TIMESTAMP,
                 plan TEXT DEFAULT 'premium',
-                auto_renew BOOLEAN DEFAULT 0,
-                FOREIGN KEY (user_id) REFERENCES users(user_id)
+                auto_renew BOOLEAN DEFAULT 0
             )
         ''')
         
@@ -227,8 +243,7 @@ class DatabaseManager:
                 is_running BOOLEAN DEFAULT 0,
                 last_started TIMESTAMP,
                 last_stopped TIMESTAMP,
-                pid INTEGER,
-                FOREIGN KEY (user_id) REFERENCES users(user_id)
+                pid INTEGER
             )
         ''')
         
@@ -237,29 +252,30 @@ class DatabaseManager:
                 user_id INTEGER PRIMARY KEY,
                 role TEXT DEFAULT 'admin',
                 added_by INTEGER,
-                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(user_id)
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS active_users (
                 user_id INTEGER PRIMARY KEY,
-                last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(user_id)
+                last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        
+        # Insert default admin
+        cursor.execute('INSERT OR IGNORE INTO admins (user_id) VALUES (?)', (config.OWNER_ID,))
+        if config.ADMIN_ID != config.OWNER_ID:
+            cursor.execute('INSERT OR IGNORE INTO admins (user_id) VALUES (?)', (config.ADMIN_ID,))
     
     def _migration_v2(self, cursor):
-        """Add logs and analytics tables"""
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER,
                 action TEXT,
                 details TEXT,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(user_id)
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
@@ -273,15 +289,13 @@ class DatabaseManager:
         ''')
     
     def _migration_v3(self, cursor):
-        """Add backups and notifications"""
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS backups (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER,
                 file_name TEXT,
                 backup_path TEXT,
-                backup_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(user_id)
+                backup_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
@@ -292,8 +306,7 @@ class DatabaseManager:
                 title TEXT,
                 message TEXT,
                 is_read BOOLEAN DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(user_id)
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
 
@@ -347,41 +360,11 @@ class CacheManager:
                     del self._cache[key]
 
 # ============================================================
-# MENU SYSTEM - MODERN UI
+# MENU SYSTEM
 # ============================================================
 
 class MenuManager:
     """Advanced menu system with pagination and themes"""
-    
-    THEMES = {
-        'dark': {
-            'primary': '🎯',
-            'secondary': '💫',
-            'accent': '✨',
-            'success': '✅',
-            'danger': '🚫',
-            'warning': '⚠️',
-            'info': 'ℹ️',
-        },
-        'light': {
-            'primary': '🔵',
-            'secondary': '⚪',
-            'accent': '🔶',
-            'success': '🟢',
-            'danger': '🔴',
-            'warning': '🟡',
-            'info': '🔷',
-        },
-        'vibrant': {
-            'primary': '💜',
-            'secondary': '💗',
-            'accent': '💛',
-            'success': '💚',
-            'danger': '❤️',
-            'warning': '🧡',
-            'info': '💙',
-        }
-    }
     
     def __init__(self, user_id: int):
         self.user_id = user_id
@@ -389,10 +372,8 @@ class MenuManager:
         self.lang = 'en'
     
     def main_menu(self, user_data: dict) -> types.InlineKeyboardMarkup:
-        """Main menu with modern design"""
         markup = types.InlineKeyboardMarkup(row_width=2)
         
-        # User info row
         markup.add(
             types.InlineKeyboardButton(
                 f"👤 {user_data.get('first_name', 'User')}",
@@ -404,7 +385,6 @@ class MenuManager:
             )
         )
         
-        # Main actions
         markup.add(
             types.InlineKeyboardButton("📤 Upload", callback_data='upload'),
             types.InlineKeyboardButton("📂 My Files", callback_data='files')
@@ -415,23 +395,6 @@ class MenuManager:
             types.InlineKeyboardButton("📜 Logs", callback_data='logs')
         )
         
-        # Premium section
-        if self.is_premium():
-            markup.add(
-                types.InlineKeyboardButton(
-                    "💎 Premium Features",
-                    callback_data='premium_features'
-                )
-            )
-        else:
-            markup.add(
-                types.InlineKeyboardButton(
-                    "⭐ Upgrade to Premium",
-                    callback_data='premium'
-                )
-            )
-        
-        # Bottom row
         markup.add(
             types.InlineKeyboardButton("🆘 Help", callback_data='help'),
             types.InlineKeyboardButton("⚙️ Settings", callback_data='settings')
@@ -440,7 +403,6 @@ class MenuManager:
         return markup
     
     def file_management_menu(self, files: List[dict], page: int = 0, per_page: int = 5) -> types.InlineKeyboardMarkup:
-        """Paginated file management menu"""
         markup = types.InlineKeyboardMarkup(row_width=2)
         
         total_pages = (len(files) + per_page - 1) // per_page
@@ -456,7 +418,6 @@ class MenuManager:
                 )
             )
         
-        # Pagination controls
         if total_pages > 1:
             nav_buttons = []
             if page > 0:
@@ -480,7 +441,6 @@ class MenuManager:
         return markup
     
     def file_controls_menu(self, file_data: dict) -> types.InlineKeyboardMarkup:
-        """File control menu with actions"""
         markup = types.InlineKeyboardMarkup(row_width=2)
         
         is_running = file_data.get('is_running', False)
@@ -514,65 +474,6 @@ class MenuManager:
         )
         
         return markup
-    
-    def settings_menu(self) -> types.InlineKeyboardMarkup:
-        """Settings menu"""
-        markup = types.InlineKeyboardMarkup(row_width=2)
-        
-        markup.add(
-            types.InlineKeyboardButton(f"🌐 Language: {self.lang.upper()}", callback_data='change_lang'),
-            types.InlineKeyboardButton(f"🎨 Theme: {self.theme.title()}", callback_data='change_theme')
-        )
-        
-        markup.add(
-            types.InlineKeyboardButton("🔔 Notifications", callback_data='notifications'),
-            types.InlineKeyboardButton("📋 Export Data", callback_data='export_data')
-        )
-        
-        markup.add(
-            types.InlineKeyboardButton("🔙 Back", callback_data='main')
-        )
-        
-        return markup
-    
-    def admin_menu(self) -> types.InlineKeyboardMarkup:
-        """Admin panel menu"""
-        markup = types.InlineKeyboardMarkup(row_width=2)
-        
-        markup.add(
-            types.InlineKeyboardButton("👥 Users", callback_data='admin_users'),
-            types.InlineKeyboardButton("📊 Analytics", callback_data='admin_analytics')
-        )
-        
-        markup.add(
-            types.InlineKeyboardButton("💳 Subscriptions", callback_data='admin_subscriptions'),
-            types.InlineKeyboardButton("🚫 Banned Users", callback_data='admin_banned')
-        )
-        
-        markup.add(
-            types.InlineKeyboardButton("📢 Broadcast", callback_data='broadcast'),
-            types.InlineKeyboardButton("🔒 Lock Bot", callback_data='admin_lock')
-        )
-        
-        markup.add(
-            types.InlineKeyboardButton("🔄 Run All Scripts", callback_data='admin_run_all'),
-            types.InlineKeyboardButton("🗑️ Cleanup", callback_data='admin_cleanup')
-        )
-        
-        markup.add(
-            types.InlineKeyboardButton("📋 System Status", callback_data='admin_status')
-        )
-        
-        markup.add(
-            types.InlineKeyboardButton("🔙 Back", callback_data='main')
-        )
-        
-        return markup
-    
-    def is_premium(self) -> bool:
-        """Check if user has premium status"""
-        # This should be integrated with subscription system
-        return False
 
 # ============================================================
 # PROCESS MANAGER
@@ -589,7 +490,6 @@ class ProcessManager:
         self._auto_restart_enabled = True
     
     def start_process(self, script_key: str, command: List[str], cwd: str, env: dict = None) -> bool:
-        """Start a new process with monitoring"""
         with self._lock:
             if script_key in self._processes:
                 return False
@@ -602,6 +502,15 @@ class ProcessManager:
                     errors='replace'
                 )
                 
+                startupinfo = None
+                creationflags = 0
+                
+                if os.name == 'nt':
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    startupinfo.wShowWindow = subprocess.SW_HIDE
+                    creationflags = subprocess.CREATE_NO_WINDOW
+                
                 process = subprocess.Popen(
                     command,
                     cwd=cwd,
@@ -612,7 +521,8 @@ class ProcessManager:
                     encoding='utf-8',
                     errors='replace',
                     env=env or os.environ,
-                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                    startupinfo=startupinfo,
+                    creationflags=creationflags
                 )
                 
                 self._processes[script_key] = {
@@ -623,7 +533,8 @@ class ProcessManager:
                     'pid': process.pid,
                     'restarts': 0,
                     'last_restart': None,
-                    'status': 'running'
+                    'status': 'running',
+                    'auto_restart': True
                 }
                 
                 logging.info(f"Started process {script_key} with PID {process.pid}")
@@ -634,7 +545,6 @@ class ProcessManager:
                 return False
     
     def stop_process(self, script_key: str) -> bool:
-        """Stop a running process"""
         with self._lock:
             if script_key not in self._processes:
                 return False
@@ -643,20 +553,16 @@ class ProcessManager:
             process = process_info['process']
             
             try:
-                # Close stdin to let process know
                 if process.stdin:
                     process.stdin.close()
                 
-                # Terminate gracefully
                 process.terminate()
                 
-                # Wait for process to finish
                 try:
                     process.wait(timeout=10)
                 except subprocess.TimeoutExpired:
                     process.kill()
                 
-                # Close log file
                 if process_info['log_file'] and not process_info['log_file'].closed:
                     process_info['log_file'].close()
                 
@@ -669,14 +575,12 @@ class ProcessManager:
                 return False
     
     def get_process_info(self, script_key: str) -> Optional[dict]:
-        """Get information about a running process"""
         with self._lock:
             if script_key not in self._processes:
                 return None
             
             info = self._processes[script_key].copy()
             
-            # Check if process is still running
             if info['status'] == 'running':
                 try:
                     info['is_running'] = psutil.pid_exists(info['pid'])
@@ -686,7 +590,6 @@ class ProcessManager:
                     info['is_running'] = False
                     info['status'] = 'unknown'
             
-            # Get resource usage
             try:
                 proc = psutil.Process(info['pid'])
                 info['cpu_percent'] = proc.cpu_percent(interval=0.1)
@@ -700,12 +603,10 @@ class ProcessManager:
             return info
     
     def get_all_processes(self) -> Dict[str, dict]:
-        """Get all tracked processes"""
         with self._lock:
             return self._processes.copy()
     
     def cleanup_stale_processes(self):
-        """Clean up processes that have exited but not been removed"""
         with self._lock:
             for key in list(self._processes.keys()):
                 info = self._processes[key]
@@ -719,22 +620,18 @@ class ProcessManager:
                         pass
     
     def _monitor_loop(self):
-        """Monitor processes and auto-restart crashed ones"""
         while True:
             try:
                 self.cleanup_stale_processes()
                 
-                # Auto-restart crashed processes
                 if self._auto_restart_enabled:
                     for key, info in self._processes.items():
                         if info['status'] == 'exited' and info.get('auto_restart', True):
                             restarts = info.get('restarts', 0)
-                            if restarts < 5:  # Max 5 restarts
+                            if restarts < 5:
                                 logging.info(f"Auto-restarting {key} (attempt {restarts+1})")
-                                # Restart logic here
                                 info['restarts'] = restarts + 1
                                 info['last_restart'] = datetime.now()
-                
             except Exception as e:
                 logging.error(f"Monitor loop error: {e}")
             
@@ -753,7 +650,6 @@ class BackupManager:
         os.makedirs(self.backup_dir, exist_ok=True)
     
     def create_backup(self, user_id: int, file_name: str, file_path: str) -> Optional[str]:
-        """Create a backup of a file"""
         try:
             backup_id = f"{user_id}_{int(time.time())}_{uuid.uuid4().hex[:8]}"
             backup_path = os.path.join(self.backup_dir, backup_id)
@@ -761,7 +657,6 @@ class BackupManager:
             os.makedirs(backup_path, exist_ok=True)
             shutil.copy2(file_path, os.path.join(backup_path, file_name))
             
-            # Save metadata
             metadata = {
                 'user_id': user_id,
                 'file_name': file_name,
@@ -781,13 +676,11 @@ class BackupManager:
             return None
     
     def restore_backup(self, backup_id: str, restore_path: str) -> bool:
-        """Restore a backup"""
         try:
             backup_path = os.path.join(self.backup_dir, backup_id)
             if not os.path.exists(backup_path):
                 return False
             
-            # Find the file in backup
             for file in os.listdir(backup_path):
                 if file != 'metadata.json':
                     shutil.copy2(os.path.join(backup_path, file), restore_path)
@@ -800,7 +693,6 @@ class BackupManager:
             return False
     
     def list_backups(self, user_id: int) -> List[dict]:
-        """List all backups for a user"""
         backups = []
         try:
             for backup_id in os.listdir(self.backup_dir):
@@ -816,60 +708,6 @@ class BackupManager:
         return sorted(backups, key=lambda x: x.get('created_at', ''), reverse=True)
 
 # ============================================================
-# NOTIFICATION SYSTEM
-# ============================================================
-
-class NotificationManager:
-    """User notification management"""
-    
-    def __init__(self, db_manager: DatabaseManager, bot: telebot.TeleBot):
-        self.db = db_manager
-        self.bot = bot
-    
-    def add_notification(self, user_id: int, title: str, message: str):
-        """Add a notification for a user"""
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO notifications (user_id, title, message)
-                VALUES (?, ?, ?)
-            ''', (user_id, title, message))
-            conn.commit()
-        
-        # Send notification immediately if user is online
-        try:
-            self.bot.send_message(
-                user_id,
-                f"🔔 **{title}**\n\n{message}",
-                parse_mode='Markdown'
-            )
-        except Exception as e:
-            logging.error(f"Failed to send notification to {user_id}: {e}")
-    
-    def get_notifications(self, user_id: int, limit: int = 20) -> List[dict]:
-        """Get unread notifications for a user"""
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT id, title, message, is_read, created_at
-                FROM notifications
-                WHERE user_id = ?
-                ORDER BY created_at DESC
-                LIMIT ?
-            ''', (user_id, limit))
-            return [dict(row) for row in cursor.fetchall()]
-    
-    def mark_read(self, notification_id: int):
-        """Mark a notification as read"""
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                UPDATE notifications SET is_read = 1
-                WHERE id = ?
-            ''', (notification_id,))
-            conn.commit()
-
-# ============================================================
 # MAIN BOT CLASS
 # ============================================================
 
@@ -878,66 +716,56 @@ class AdvancedBot:
     
     def __init__(self):
         self.bot = telebot.TeleBot(config.BOT_TOKEN)
-        self.db = DatabaseManager(os.path.join('inf', 'bot_data.db'))
+        self.db = DatabaseManager('inf/bot_data.db')
         self.db.initialize()
         self.cache = CacheManager()
         self.process_manager = ProcessManager()
         self.backup_manager = BackupManager(os.path.dirname(os.path.abspath(__file__)))
-        self.notification_manager = NotificationManager(self.db, self.bot)
-        self.menu_manager = MenuManager(config.OWNER_ID)
-        
         self.bot_locked = False
+        self.active_users = set()
+        self.bot_scripts = {}
+        self.user_files = {}
+        self.user_subscriptions = {}
+        self.admin_ids = {config.OWNER_ID, config.ADMIN_ID}
+        self.banned_users = set()
+        self.banned_usernames = set()
+        
         self._setup_handlers()
-        self._setup_flask()
         self._setup_cleanup()
+        keep_alive()
         
         logging.info("Advanced Bot initialized successfully")
     
     # ============================================================
-    # COMMAND HANDLERS
+    # HANDLER SETUP
     # ============================================================
     
     def _setup_handlers(self):
         """Setup all command handlers"""
         
-        # Start command
         @self.bot.message_handler(commands=['start', 'help'])
         def start_command(message):
             self._handle_start(message)
         
-        # Settings command
-        @self.bot.message_handler(commands=['settings'])
-        def settings_command(message):
-            self._handle_settings(message)
-        
-        # My files command
-        @self.bot.message_handler(commands=['myfiles'])
-        def myfiles_command(message):
-            self._handle_files(message)
-        
-        # Upload command
-        @self.bot.message_handler(commands=['upload'])
-        def upload_command(message):
-            self._handle_upload(message)
-        
-        # Stats command
         @self.bot.message_handler(commands=['stats'])
         def stats_command(message):
             self._handle_stats(message)
         
-        # Profile command
-        @self.bot.message_handler(commands=['profile'])
-        def profile_command(message):
-            self._handle_profile(message)
+        @self.bot.message_handler(commands=['upload'])
+        def upload_command(message):
+            self._handle_upload(message)
         
-        # Admin commands
+        @self.bot.message_handler(commands=['myfiles'])
+        def myfiles_command(message):
+            self._handle_files(message)
+        
+        @self.bot.message_handler(commands=['ping'])
+        def ping_command(message):
+            self._handle_ping(message)
+        
         @self.bot.message_handler(commands=['admin'])
         def admin_command(message):
             self._handle_admin(message)
-        
-        @self.bot.message_handler(commands=['broadcast'])
-        def broadcast_command(message):
-            self._handle_broadcast(message)
         
         @self.bot.message_handler(commands=['lock'])
         def lock_command(message):
@@ -947,70 +775,189 @@ class AdvancedBot:
         def unlock_command(message):
             self._handle_unlock(message)
         
-        # Ping
-        @self.bot.message_handler(commands=['ping'])
-        def ping_command(message):
-            self._handle_ping(message)
+        @self.bot.message_handler(commands=['broadcast'])
+        def broadcast_command(message):
+            self._handle_broadcast(message)
         
-        # File upload handler
+        @self.bot.message_handler(commands=['settings'])
+        def settings_command(message):
+            self._handle_settings(message)
+        
+        @self.bot.message_handler(commands=['profile'])
+        def profile_command(message):
+            self._handle_profile(message)
+        
+        @self.bot.message_handler(commands=['backup'])
+        def backup_command(message):
+            self._handle_backup(message)
+        
+        @self.bot.message_handler(commands=['restore'])
+        def restore_command(message):
+            self._handle_restore(message)
+        
+        @self.bot.message_handler(commands=['cleanup'])
+        def cleanup_command(message):
+            self._handle_cleanup(message)
+        
+        @self.bot.message_handler(commands=['ban'])
+        def ban_command(message):
+            self._handle_ban(message)
+        
+        @self.bot.message_handler(commands=['unban'])
+        def unban_command(message):
+            self._handle_unban(message)
+        
+        @self.bot.message_handler(commands=['listusers'])
+        def listusers_command(message):
+            self._handle_listusers(message)
+        
         @self.bot.message_handler(content_types=['document'])
         def file_upload_handler(message):
             self._handle_file_upload(message)
         
-        # Callback query handler
         @self.bot.callback_query_handler(func=lambda call: True)
         def callback_handler(call):
             self._handle_callback(call)
         
-        # Message handler for reply keyboard
         @self.bot.message_handler(func=lambda message: True)
         def message_handler(message):
             self._handle_message(message)
     
     # ============================================================
-    # COMMAND IMPLEMENTATIONS
+    # COMMAND HANDLERS
     # ============================================================
     
     def _handle_start(self, message):
-        """Handle /start command with force join and welcome"""
+        """Handle /start command"""
         user_id = message.from_user.id
         chat_id = message.chat.id
-        
-        # Check force join
-        if user_id not in [config.OWNER_ID, config.ADMIN_ID]:
-            if not self._check_force_join(user_id):
-                self._send_force_join_message(chat_id)
-                return
         
         # Check ban
         if self._is_user_banned(user_id):
             self.bot.send_message(chat_id, "🚫 You are banned from using this bot.")
             return
         
+        # Check force join
+        if user_id not in self.admin_ids:
+            if not self._check_force_join(user_id):
+                self._send_force_join_message(chat_id)
+                return
+        
         # Register user
         self._register_user(message.from_user)
         
         # Get user data
         user_data = self._get_user_data(user_id)
+        file_count = self._get_user_file_count(user_id)
+        file_limit = self._get_user_limit(user_id)
         
-        # Main menu
-        markup = self.menu_manager.main_menu(user_data)
+        # Check subscription
+        subscription = self._get_user_subscription(user_id)
+        is_premium = False
+        days_left = 0
         
-        welcome_text = self._get_welcome_text(user_data)
+        if subscription:
+            expiry = subscription.get('expiry')
+            if expiry:
+                if isinstance(expiry, str):
+                    try:
+                        expiry = datetime.fromisoformat(expiry)
+                    except:
+                        expiry = None
+                if expiry and expiry > datetime.now():
+                    is_premium = True
+                    days_left = (expiry - datetime.now()).days
+        
+        status = "🆓 Free"
+        if user_id == config.OWNER_ID:
+            status = "👑 Owner"
+        elif user_id in self.admin_ids:
+            status = "🛡️ Admin"
+        elif is_premium:
+            status = f"💎 Premium ({days_left}d left)"
+        
+        welcome_text = (
+            f"🚀 **Welcome to Bot Hosting Platform!**\n\n"
+            f"👤 **User:** {message.from_user.first_name}\n"
+            f"✳️ **Username:** @{message.from_user.username or 'Not set'}\n"
+            f"🆔 **ID:** `{user_id}`\n"
+            f"🔰 **Status:** {status}\n"
+            f"📂 **Files:** {file_count}/{file_limit}\n\n"
+            f"🤖 **Host and run Python or JavaScript bots**\n"
+            f"📤 Upload your scripts or ZIP archives\n"
+            f"⚡ Get started by uploading your first file!\n\n"
+            f"👇 **Use the buttons below:**"
+        )
+        
+        markup = self._create_main_menu(user_id)
         self.bot.send_message(chat_id, welcome_text, reply_markup=markup, parse_mode='Markdown')
     
-    def _handle_settings(self, message):
-        """Handle settings command"""
+    def _handle_stats(self, message):
+        """Handle stats command"""
         user_id = message.from_user.id
         
         if self._is_user_banned(user_id):
             return
         
-        markup = self.menu_manager.settings_menu()
+        # Get user files
+        user_files = self._get_user_files(user_id)
+        running_count = sum(1 for f in user_files if f.get('is_running', False))
+        
+        stats_text = (
+            f"📊 **Your Statistics**\n\n"
+            f"📂 **Total Files:** {len(user_files)}\n"
+            f"🟢 **Running Bots:** {running_count}\n"
+            f"📤 **Uploads:** {len(user_files)}\n"
+        )
+        
+        # Admin stats
+        if user_id in self.admin_ids:
+            total_users = len(self._get_all_users())
+            total_files = self._get_total_files()
+            running_processes = len(self.process_manager.get_all_processes())
+            storage_used = self._get_storage_used()
+            
+            stats_text += f"\n👑 **Admin Stats**\n"
+            stats_text += f"👥 **Total Users:** {total_users}\n"
+            stats_text += f"📂 **Total Files:** {total_files}\n"
+            stats_text += f"🟢 **Running Bots:** {running_processes}\n"
+            stats_text += f"💾 **Storage Used:** {self._format_size(storage_used)}\n"
+            stats_text += f"🔒 **Bot Status:** {'🔴 Locked' if self.bot_locked else '🟢 Unlocked'}"
+        
+        self.bot.reply_to(message, stats_text, parse_mode='Markdown')
+    
+    def _handle_upload(self, message):
+        """Handle upload command"""
+        user_id = message.from_user.id
+        
+        if self._is_user_banned(user_id):
+            return
+        
+        if self.bot_locked and user_id not in self.admin_ids:
+            self.bot.reply_to(message, "🔒 Bot is currently locked.")
+            return
+        
+        # Check file limit
+        user_files = self._get_user_files(user_id)
+        user_limit = self._get_user_limit(user_id)
+        
+        if len(user_files) >= user_limit:
+            self.bot.reply_to(
+                message,
+                f"⚠️ **File Limit Reached**\n\n"
+                f"You have reached your limit of {user_limit} files.\n"
+                f"Delete some files to upload more.",
+                parse_mode='Markdown'
+            )
+            return
+        
         self.bot.reply_to(
             message,
-            "⚙️ **Settings**\n\nCustomize your bot experience:",
-            reply_markup=markup,
+            "📤 **Upload Files**\n\n"
+            "Send me a Python (`.py`) or JavaScript (`.js`) file.\n"
+            "You can also send a ZIP archive containing your project.\n\n"
+            "📦 Supported: `.py`, `.js`, `.zip`\n"
+            f"📊 Limit: {len(user_files)}/{user_limit}",
             parse_mode='Markdown'
         )
     
@@ -1031,179 +978,11 @@ class AdvancedBot:
             )
             return
         
-        markup = self.menu_manager.file_management_menu(files)
+        markup = self._create_file_menu(files)
         self.bot.reply_to(
             message,
             f"📂 **Your Files** ({len(files)} total)\n\nClick a file to manage it:",
             reply_markup=markup,
-            parse_mode='Markdown'
-        )
-    
-    def _handle_upload(self, message):
-        """Handle upload command"""
-        user_id = message.from_user.id
-        
-        if self._is_user_banned(user_id):
-            return
-        
-        if self.bot_locked and user_id not in [config.OWNER_ID, config.ADMIN_ID]:
-            self.bot.reply_to(message, "🔒 Bot is currently locked. Please try again later.")
-            return
-        
-        # Check file limit
-        user_files = self._get_user_files(user_id)
-        user_limit = self._get_user_limit(user_id)
-        
-        if len(user_files) >= user_limit:
-            self.bot.reply_to(
-                message,
-                f"⚠️ **File Limit Reached**\n\nYou have reached your limit of {user_limit} files.\n"
-                f"Delete some files to upload more.",
-                parse_mode='Markdown'
-            )
-            return
-        
-        self.bot.reply_to(
-            message,
-            "📤 **Upload Files**\n\n"
-            "Send me a Python (`.py`) or JavaScript (`.js`) file.\n"
-            "You can also send a ZIP archive containing your project.\n\n"
-            "📦 Supported: `.py`, `.js`, `.zip`",
-            parse_mode='Markdown'
-        )
-    
-    def _handle_stats(self, message):
-        """Handle stats command"""
-        user_id = message.from_user.id
-        
-        if self._is_user_banned(user_id):
-            return
-        
-        stats = self._get_system_stats(user_id)
-        
-        # Check if admin for additional stats
-        is_admin = user_id in [config.OWNER_ID, config.ADMIN_ID]
-        
-        if is_admin:
-            stats_text = (
-                f"📊 **System Statistics**\n\n"
-                f"👥 **Total Users:** {stats['total_users']}\n"
-                f"📂 **Total Files:** {stats['total_files']}\n"
-                f"🟢 **Running Bots:** {stats['running_bots']}\n"
-                f"💾 **Storage Used:** {stats['storage_used']}\n"
-                f"🧠 **CPU Usage:** {stats['cpu_usage']}%\n"
-                f"💿 **Memory Usage:** {stats['memory_usage']}%\n"
-                f"🔒 **Bot Status:** {'🔴 Locked' if self.bot_locked else '🟢 Unlocked'}"
-            )
-        else:
-            stats_text = (
-                f"📊 **Your Statistics**\n\n"
-                f"📂 **Your Files:** {stats['user_files']}\n"
-                f"📤 **Uploads:** {stats['user_uploads']}\n"
-                f"🟢 **Your Running Bots:** {stats['user_running']}\n"
-                f"📈 **Total Users:** {stats['total_users']}\n"
-                f"💾 **Storage Used:** {stats['storage_used']}"
-            )
-        
-        self.bot.reply_to(message, stats_text, parse_mode='Markdown')
-    
-    def _handle_profile(self, message):
-        """Handle profile command"""
-        user_id = message.from_user.id
-        
-        if self._is_user_banned(user_id):
-            return
-        
-        user_data = self._get_user_data(user_id)
-        subscription = self._get_user_subscription(user_id)
-        
-        profile_text = (
-            f"👤 **User Profile**\n\n"
-            f"🆔 **User ID:** `{user_id}`\n"
-            f"👤 **Name:** {user_data.get('first_name', 'Unknown')}\n"
-            f"✳️ **Username:** @{user_data.get('username', 'Not set')}\n"
-            f"📅 **Joined:** {user_data.get('created_at', 'Unknown')}\n"
-            f"📂 **Files:** {self._get_user_file_count(user_id)}\n"
-        )
-        
-        if subscription:
-            expiry = subscription.get('expiry')
-            if expiry and expiry > datetime.now():
-                days_left = (expiry - datetime.now()).days
-                profile_text += f"💎 **Premium:** Yes (Expires in {days_left} days)\n"
-            else:
-                profile_text += "🆓 **Premium:** No\n"
-        else:
-            profile_text += "🆓 **Premium:** No\n"
-        
-        # Admin status
-        if user_id in [config.OWNER_ID, config.ADMIN_ID]:
-            role = "Owner" if user_id == config.OWNER_ID else "Admin"
-            profile_text += f"🛡️ **Role:** {role}\n"
-        
-        self.bot.reply_to(message, profile_text, parse_mode='Markdown')
-    
-    def _handle_admin(self, message):
-        """Handle admin command"""
-        user_id = message.from_user.id
-        
-        if user_id not in [config.OWNER_ID, config.ADMIN_ID]:
-            self.bot.reply_to(message, "⚠️ **Admin Access Required**", parse_mode='Markdown')
-            return
-        
-        markup = self.menu_manager.admin_menu()
-        self.bot.reply_to(
-            message,
-            "👑 **Admin Panel**\n\n"
-            "Manage users, files, and system settings:",
-            reply_markup=markup,
-            parse_mode='Markdown'
-        )
-    
-    def _handle_broadcast(self, message):
-        """Handle broadcast command"""
-        user_id = message.from_user.id
-        
-        if user_id not in [config.OWNER_ID, config.ADMIN_ID]:
-            return
-        
-        msg = self.bot.reply_to(
-            message,
-            "📢 **Broadcast Message**\n\n"
-            "Send me the message to broadcast to all users.\n"
-            "You can include images, videos, or documents.\n\n"
-            "Type /cancel to cancel.",
-            parse_mode='Markdown'
-        )
-        self.bot.register_next_step_handler(msg, self._process_broadcast)
-    
-    def _handle_lock(self, message):
-        """Handle lock command"""
-        user_id = message.from_user.id
-        
-        if user_id not in [config.OWNER_ID, config.ADMIN_ID]:
-            return
-        
-        self.bot_locked = True
-        self.bot.reply_to(
-            message,
-            "🔒 **Bot Locked**\n\n"
-            "The bot is now locked. Only admins can use it.",
-            parse_mode='Markdown'
-        )
-    
-    def _handle_unlock(self, message):
-        """Handle unlock command"""
-        user_id = message.from_user.id
-        
-        if user_id not in [config.OWNER_ID, config.ADMIN_ID]:
-            return
-        
-        self.bot_locked = False
-        self.bot.reply_to(
-            message,
-            "🔓 **Bot Unlocked**\n\n"
-            "The bot is now unlocked. All users can use it.",
             parse_mode='Markdown'
         )
     
@@ -1214,64 +993,407 @@ class AdvancedBot:
         end = time.time()
         latency = round((end - start) * 1000, 2)
         self.bot.edit_message_text(
-            f"🏓 **Pong!**\n\n"
-            f"⏱️ **Latency:** {latency}ms",
+            f"🏓 **Pong!**\n\n⏱️ **Latency:** {latency}ms\n"
+            f"🖥️ **Server:** {platform.node()}\n"
+            f"🐍 **Python:** {sys.version.split()[0]}",
             message.chat.id,
             msg.message_id,
             parse_mode='Markdown'
         )
     
+    def _handle_admin(self, message):
+        """Handle admin command"""
+        user_id = message.from_user.id
+        
+        if self._is_user_banned(user_id):
+            return
+        
+        if user_id not in self.admin_ids:
+            self.bot.reply_to(message, "⚠️ **Admin Access Required**", parse_mode='Markdown')
+            return
+        
+        markup = self._create_admin_menu()
+        self.bot.reply_to(
+            message,
+            "👑 **Admin Panel**\n\nManage users, files, and system settings:",
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+    
+    def _handle_lock(self, message):
+        """Handle lock command"""
+        user_id = message.from_user.id
+        
+        if user_id not in self.admin_ids:
+            return
+        
+        self.bot_locked = True
+        self.bot.reply_to(message, "🔒 **Bot Locked**\n\nOnly admins can use the bot.", parse_mode='Markdown')
+    
+    def _handle_unlock(self, message):
+        """Handle unlock command"""
+        user_id = message.from_user.id
+        
+        if user_id not in self.admin_ids:
+            return
+        
+        self.bot_locked = False
+        self.bot.reply_to(message, "🔓 **Bot Unlocked**\n\nAll users can use the bot.", parse_mode='Markdown')
+    
+    def _handle_broadcast(self, message):
+        """Handle broadcast command"""
+        user_id = message.from_user.id
+        
+        if user_id not in self.admin_ids:
+            self.bot.reply_to(message, "⚠️ **Admin Access Required**", parse_mode='Markdown')
+            return
+        
+        msg = self.bot.reply_to(
+            message,
+            "📢 **Broadcast Message**\n\n"
+            "Send me the message to broadcast to all users.\n"
+            "You can include text, images, or documents.\n\n"
+            "Type /cancel to cancel.",
+            parse_mode='Markdown'
+        )
+        self.bot.register_next_step_handler(msg, self._process_broadcast)
+    
+    def _process_broadcast(self, message):
+        """Process broadcast message"""
+        user_id = message.from_user.id
+        
+        if user_id not in self.admin_ids:
+            return
+        
+        if message.text and message.text.lower() == '/cancel':
+            self.bot.reply_to(message, "📢 Broadcast cancelled.")
+            return
+        
+        users = self._get_all_users()
+        
+        if not users:
+            self.bot.reply_to(message, "❌ No users to broadcast to.")
+            return
+        
+        # Show confirmation
+        confirm_msg = self.bot.reply_to(
+            message,
+            f"📢 **Broadcast Confirmation**\n\n"
+            f"Sending to **{len(users)}** users.\n\n"
+            f"Message preview:\n"
+            f"```\n{message.text[:200]}{'...' if len(message.text or '') > 200 else ''}\n```\n"
+            f"Are you sure?",
+            parse_mode='Markdown'
+        )
+        
+        # Send broadcast
+        success = 0
+        failed = 0
+        blocked = 0
+        
+        for user in users:
+            try:
+                if message.text:
+                    self.bot.send_message(user['user_id'], message.text)
+                elif message.photo:
+                    self.bot.send_photo(user['user_id'], message.photo[-1].file_id, caption=message.caption)
+                elif message.document:
+                    self.bot.send_document(user['user_id'], message.document.file_id, caption=message.caption)
+                success += 1
+                time.sleep(0.05)
+            except Exception as e:
+                failed += 1
+                if "blocked" in str(e).lower():
+                    blocked += 1
+                logging.warning(f"Broadcast failed to {user['user_id']}: {e}")
+        
+        self.bot.edit_message_text(
+            f"📢 **Broadcast Complete**\n\n"
+            f"✅ Sent: {success}\n"
+            f"❌ Failed: {failed}\n"
+            f"🚫 Blocked: {blocked}\n"
+            f"👥 Total: {len(users)}",
+            confirm_msg.chat.id,
+            confirm_msg.message_id,
+            parse_mode='Markdown'
+        )
+    
+    def _handle_settings(self, message):
+        """Handle settings command"""
+        user_id = message.from_user.id
+        
+        if self._is_user_banned(user_id):
+            return
+        
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        markup.add(
+            types.InlineKeyboardButton("🌐 Language", callback_data='settings_lang'),
+            types.InlineKeyboardButton("🔔 Notifications", callback_data='settings_notif')
+        )
+        markup.add(
+            types.InlineKeyboardButton("📋 Export Data", callback_data='settings_export'),
+            types.InlineKeyboardButton("🗑️ Clear Data", callback_data='settings_clear')
+        )
+        markup.add(types.InlineKeyboardButton("🔙 Back", callback_data='main'))
+        
+        self.bot.reply_to(
+            message,
+            "⚙️ **Settings**\n\nCustomize your bot experience:",
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+    
+    def _handle_profile(self, message):
+        """Handle profile command"""
+        user_id = message.from_user.id
+        
+        if self._is_user_banned(user_id):
+            return
+        
+        user_data = self._get_user_data(user_id)
+        subscription = self._get_user_subscription(user_id)
+        files = self._get_user_files(user_id)
+        
+        profile_text = (
+            f"👤 **User Profile**\n\n"
+            f"🆔 **User ID:** `{user_id}`\n"
+            f"👤 **Name:** {user_data.get('first_name', 'Unknown')}\n"
+            f"✳️ **Username:** @{user_data.get('username', 'Not set')}\n"
+            f"📅 **Joined:** {user_data.get('created_at', 'Unknown')}\n"
+            f"📂 **Files:** {len(files)}\n"
+        )
+        
+        if subscription:
+            expiry = subscription.get('expiry')
+            if expiry:
+                if isinstance(expiry, str):
+                    try:
+                        expiry = datetime.fromisoformat(expiry)
+                    except:
+                        expiry = None
+                if expiry and expiry > datetime.now():
+                    days_left = (expiry - datetime.now()).days
+                    profile_text += f"💎 **Premium:** Yes (Expires in {days_left} days)\n"
+                else:
+                    profile_text += "🆓 **Premium:** No\n"
+            else:
+                profile_text += "🆓 **Premium:** No\n"
+        else:
+            profile_text += "🆓 **Premium:** No\n"
+        
+        if user_id in self.admin_ids:
+            role = "Owner" if user_id == config.OWNER_ID else "Admin"
+            profile_text += f"🛡️ **Role:** {role}\n"
+        
+        self.bot.reply_to(message, profile_text, parse_mode='Markdown')
+    
+    def _handle_backup(self, message):
+        """Handle backup command"""
+        user_id = message.from_user.id
+        
+        if self._is_user_banned(user_id):
+            return
+        
+        files = self._get_user_files(user_id)
+        if not files:
+            self.bot.reply_to(message, "📂 **No Files to Backup**", parse_mode='Markdown')
+            return
+        
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        for file in files[:10]:
+            markup.add(
+                types.InlineKeyboardButton(
+                    f"💾 {file['file_name']}",
+                    callback_data=f"backup_file_{file['id']}"
+                )
+            )
+        markup.add(types.InlineKeyboardButton("🔙 Back", callback_data='main'))
+        
+        self.bot.reply_to(
+            message,
+            "💾 **Backup Manager**\n\nSelect a file to backup:",
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+    
+    def _handle_restore(self, message):
+        """Handle restore command"""
+        user_id = message.from_user.id
+        
+        if self._is_user_banned(user_id):
+            return
+        
+        backups = self.backup_manager.list_backups(user_id)
+        if not backups:
+            self.bot.reply_to(message, "📂 **No Backups Found**", parse_mode='Markdown')
+            return
+        
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        for backup in backups[:10]:
+            markup.add(
+                types.InlineKeyboardButton(
+                    f"📥 {backup['file_name']} ({backup['created_at'][:10]})",
+                    callback_data=f"restore_{backup['backup_id']}"
+                )
+            )
+        markup.add(types.InlineKeyboardButton("🔙 Back", callback_data='main'))
+        
+        self.bot.reply_to(
+            message,
+            "📥 **Restore Manager**\n\nSelect a backup to restore:",
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+    
+    def _handle_cleanup(self, message):
+        """Handle cleanup command"""
+        user_id = message.from_user.id
+        
+        if user_id not in self.admin_ids:
+            return
+        
+        self.bot.reply_to(message, "🧹 **Cleaning up system resources...**", parse_mode='Markdown')
+        self._cleanup_system()
+        self.bot.reply_to(message, "✅ **Cleanup Complete**", parse_mode='Markdown')
+    
+    def _handle_ban(self, message):
+        """Handle ban command"""
+        user_id = message.from_user.id
+        
+        if user_id not in self.admin_ids:
+            return
+        
+        try:
+            parts = message.text.split()
+            if len(parts) < 2:
+                self.bot.reply_to(
+                    message,
+                    "⚠️ **Usage:** `/ban <user_id> [reason]`",
+                    parse_mode='Markdown'
+                )
+                return
+            
+            target_id = int(parts[1])
+            reason = " ".join(parts[2:]) if len(parts) > 2 else "No reason provided"
+            
+            if target_id in self.admin_ids:
+                self.bot.reply_to(message, "⚠️ Cannot ban an admin.", parse_mode='Markdown')
+                return
+            
+            self._ban_user(target_id, reason)
+            self.bot.reply_to(
+                message,
+                f"✅ **User Banned**\n\nUser ID: `{target_id}`\nReason: {reason}",
+                parse_mode='Markdown'
+            )
+            
+            try:
+                self.bot.send_message(
+                    target_id,
+                    f"🚫 **You have been banned**\n\nReason: {reason}",
+                    parse_mode='Markdown'
+                )
+            except:
+                pass
+                
+        except ValueError:
+            self.bot.reply_to(message, "⚠️ Invalid user ID.", parse_mode='Markdown')
+        except Exception as e:
+            self.bot.reply_to(message, f"❌ Error: {str(e)}", parse_mode='Markdown')
+    
+    def _handle_unban(self, message):
+        """Handle unban command"""
+        user_id = message.from_user.id
+        
+        if user_id not in self.admin_ids:
+            return
+        
+        try:
+            parts = message.text.split()
+            if len(parts) < 2:
+                self.bot.reply_to(
+                    message,
+                    "⚠️ **Usage:** `/unban <user_id>`",
+                    parse_mode='Markdown'
+                )
+                return
+            
+            target_id = int(parts[1])
+            
+            self._unban_user(target_id)
+            self.bot.reply_to(
+                message,
+                f"✅ **User Unbanned**\n\nUser ID: `{target_id}`",
+                parse_mode='Markdown'
+            )
+            
+            try:
+                self.bot.send_message(
+                    target_id,
+                    "✅ **You have been unbanned**\n\nYou can now use the bot again.",
+                    parse_mode='Markdown'
+                )
+            except:
+                pass
+                
+        except ValueError:
+            self.bot.reply_to(message, "⚠️ Invalid user ID.", parse_mode='Markdown')
+        except Exception as e:
+            self.bot.reply_to(message, f"❌ Error: {str(e)}", parse_mode='Markdown')
+    
+    def _handle_listusers(self, message):
+        """Handle listusers command"""
+        user_id = message.from_user.id
+        
+        if user_id not in self.admin_ids:
+            return
+        
+        users = self._get_all_users()
+        if not users:
+            self.bot.reply_to(message, "👥 **No Users Found**", parse_mode='Markdown')
+            return
+        
+        user_list = "👥 **Users**\n\n"
+        for i, user in enumerate(users[:20], 1):
+            status = "🔴 Banned" if user.get('is_banned', False) else "🟢 Active"
+            user_list += f"{i}. `{user['user_id']}` - {user.get('first_name', 'Unknown')} ({status})\n"
+        
+        if len(users) > 20:
+            user_list += f"\n... and {len(users) - 20} more users"
+        
+        self.bot.reply_to(message, user_list, parse_mode='Markdown')
+    
     def _handle_message(self, message):
-        """Handle regular messages (reply keyboard)"""
+        """Handle regular messages"""
         user_id = message.from_user.id
         text = message.text
         
         if self._is_user_banned(user_id):
             return
         
-        if self.bot_locked and user_id not in [config.OWNER_ID, config.ADMIN_ID]:
+        if self.bot_locked and user_id not in self.admin_ids:
             self.bot.reply_to(message, "🔒 Bot is currently locked.")
             return
         
-        # Check if it's a reply keyboard action
+        # Reply keyboard actions
         if text == "📊 Stats":
             self._handle_stats(message)
         elif text == "📂 My Files":
             self._handle_files(message)
         elif text == "📤 Upload":
             self._handle_upload(message)
-        elif text == "👤 Profile":
-            self._handle_profile(message)
-        elif text == "⚙️ Settings":
-            self._handle_settings(message)
-        elif text == "🆘 Help":
-            self._handle_help(message)
         elif text == "🔄 Refresh":
             self._handle_files(message)
-        elif text == "🔙 Back":
-            self._handle_start(message)
-    
-    def _handle_help(self, message):
-        """Handle help request"""
-        help_text = (
-            "🆘 **Help & Support**\n\n"
-            "**Commands:**\n"
-            "/start - Start the bot\n"
-            "/help - Show this help\n"
-            "/upload - Upload a file\n"
-            "/myfiles - View your files\n"
-            "/stats - View statistics\n"
-            "/profile - View your profile\n"
-            "/settings - Change settings\n"
-            "/ping - Check bot latency\n\n"
-            "**File Types:**\n"
-            "• Python (.py)\n"
-            "• JavaScript (.js)\n"
-            "• ZIP Archives (.zip)\n\n"
-            "**Need more help?**\n"
-            f"Contact: {config.YOUR_USERNAME}"
-        )
-        self.bot.reply_to(message, help_text, parse_mode='Markdown')
+        elif text == "👑 Admin Panel":
+            self._handle_admin(message)
+        elif text == "📢 Broadcast":
+            self._handle_broadcast(message)
+        elif text == "⚙️ Settings":
+            self._handle_settings(message)
+        elif text == "👤 Profile":
+            self._handle_profile(message)
+        elif text == "💾 Backup":
+            self._handle_backup(message)
     
     # ============================================================
     # FILE UPLOAD HANDLER
@@ -1285,7 +1407,7 @@ class AdvancedBot:
         if self._is_user_banned(user_id):
             return
         
-        if self.bot_locked and user_id not in [config.OWNER_ID, config.ADMIN_ID]:
+        if self.bot_locked and user_id not in self.admin_ids:
             self.bot.reply_to(message, "🔒 Bot is currently locked.")
             return
         
@@ -1297,9 +1419,7 @@ class AdvancedBot:
         if ext not in ['.py', '.js', '.zip']:
             self.bot.reply_to(
                 message,
-                f"❌ **Unsupported File Type**\n\n"
-                f"File: `{file_name}`\n"
-                f"Only `.py`, `.js`, and `.zip` files are allowed.",
+                f"❌ **Unsupported File Type**\n\nOnly `.py`, `.js`, and `.zip` files are allowed.",
                 parse_mode='Markdown'
             )
             return
@@ -1308,10 +1428,7 @@ class AdvancedBot:
         if document.file_size > config.MAX_FILE_SIZE:
             self.bot.reply_to(
                 message,
-                f"❌ **File Too Large**\n\n"
-                f"File: `{file_name}`\n"
-                f"Size: {document.file_size // 1024 // 1024}MB\n"
-                f"Maximum: {config.MAX_FILE_SIZE // 1024 // 1024}MB",
+                f"❌ **File Too Large**\n\nMax size: {config.MAX_FILE_SIZE // 1024 // 1024}MB",
                 parse_mode='Markdown'
             )
             return
@@ -1319,23 +1436,17 @@ class AdvancedBot:
         # Check file limit
         user_files = self._get_user_files(user_id)
         user_limit = self._get_user_limit(user_id)
-        
         if len(user_files) >= user_limit:
             self.bot.reply_to(
                 message,
-                f"⚠️ **File Limit Reached**\n\n"
-                f"You have reached your limit of {user_limit} files.\n"
-                f"Delete some files to upload more.",
+                f"⚠️ **File Limit Reached**\n\nYou have {len(user_files)}/{user_limit} files.",
                 parse_mode='Markdown'
             )
             return
         
-        # Process upload
         status_msg = self.bot.reply_to(
             message,
-            f"⏳ **Processing Upload**\n\n"
-            f"File: `{file_name}`\n"
-            f"Status: Downloading...",
+            f"⏳ **Processing Upload**\n\nFile: `{file_name}`",
             parse_mode='Markdown'
         )
         
@@ -1348,10 +1459,7 @@ class AdvancedBot:
             scan_result = self._scan_file(file_content, file_name, user_id)
             if not scan_result['safe']:
                 self.bot.edit_message_text(
-                    f"🚨 **Security Alert**\n\n"
-                    f"File: `{file_name}`\n"
-                    f"Reason: {scan_result['reason']}\n\n"
-                    f"⚠️ This file was blocked for security reasons.",
+                    f"🚨 **Security Alert**\n\nFile: `{file_name}`\nReason: {scan_result['reason']}",
                     chat_id,
                     status_msg.message_id,
                     parse_mode='Markdown'
@@ -1363,54 +1471,47 @@ class AdvancedBot:
             file_path = os.path.join(user_folder, file_name)
             
             if ext == '.zip':
-                # Handle ZIP archive
                 self._process_zip(file_content, file_name, user_id, status_msg)
             else:
-                # Handle single file
                 with open(file_path, 'wb') as f:
                     f.write(file_content)
                 
                 # Save to database
                 file_id = self._save_file_record(user_id, file_name, ext[1:], len(file_content))
                 
-                # Start the script
+                # Create backup
+                self.backup_manager.create_backup(user_id, file_name, file_path)
+                
                 self.bot.edit_message_text(
-                    f"✅ **Upload Complete**\n\n"
-                    f"File: `{file_name}`\n"
-                    f"Status: Starting...",
+                    f"✅ **Upload Complete**\n\nFile: `{file_name}`\nStatus: Ready\n📂 ID: `{file_id}`",
                     chat_id,
                     status_msg.message_id,
                     parse_mode='Markdown'
                 )
                 
-                self._start_script(user_id, file_name, file_path, ext[1:], status_msg)
-            
         except Exception as e:
             logging.error(f"File upload error: {e}")
             self.bot.edit_message_text(
-                f"❌ **Upload Failed**\n\n"
-                f"Error: {str(e)}",
+                f"❌ **Upload Failed**\n\nError: {str(e)}",
                 chat_id,
                 status_msg.message_id,
                 parse_mode='Markdown'
             )
     
-    def _process_zip(self, file_content: bytes, file_name: str, user_id: int, status_msg):
-        """Process ZIP archive upload"""
+    def _process_zip(self, file_content, file_name, user_id, status_msg):
+        """Process ZIP archive"""
         chat_id = status_msg.chat.id
         user_folder = self._get_user_folder(user_id)
         
         temp_dir = tempfile.mkdtemp(prefix=f"zip_{user_id}_")
         
         try:
-            # Save zip
             zip_path = os.path.join(temp_dir, file_name)
             with open(zip_path, 'wb') as f:
                 f.write(file_content)
             
-            # Extract
+            # Security check for zip
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                # Security check: path traversal
                 for member in zip_ref.infolist():
                     member_path = os.path.abspath(os.path.join(temp_dir, member.filename))
                     if not member_path.startswith(os.path.abspath(temp_dir)):
@@ -1419,29 +1520,25 @@ class AdvancedBot:
                 zip_ref.extractall(temp_dir)
             
             self.bot.edit_message_text(
-                f"⏳ **Processing ZIP**\n\n"
-                f"File: `{file_name}`\n"
-                f"Status: Extracted, finding main script...",
+                f"⏳ **Processing ZIP**\n\nFile: `{file_name}`\nStatus: Extracted, finding main script...",
                 chat_id,
                 status_msg.message_id,
                 parse_mode='Markdown'
             )
             
+            # Install dependencies if present
+            self._install_dependencies(temp_dir, status_msg)
+            
             # Find main script
             main_script = self._find_main_script(temp_dir)
             if not main_script:
                 self.bot.edit_message_text(
-                    f"❌ **No Script Found**\n\n"
-                    f"File: `{file_name}`\n"
-                    f"No Python or JavaScript file found in the archive.",
+                    f"❌ **No Script Found**\n\nNo Python or JavaScript file found in the archive.",
                     chat_id,
                     status_msg.message_id,
                     parse_mode='Markdown'
                 )
                 return
-            
-            # Install dependencies if present
-            self._install_dependencies(temp_dir, status_msg)
             
             # Move files to user folder
             for item in os.listdir(temp_dir):
@@ -1458,31 +1555,25 @@ class AdvancedBot:
             
             # Save to database
             file_id = self._save_file_record(
-                user_id, main_script, 
-                os.path.splitext(main_script)[1][1:], 
+                user_id, main_script,
+                os.path.splitext(main_script)[1][1:],
                 os.path.getsize(os.path.join(user_folder, main_script))
             )
             
-            # Start script
-            file_path = os.path.join(user_folder, main_script)
-            ext = os.path.splitext(main_script)[1][1:]
+            # Create backup
+            self.backup_manager.create_backup(user_id, main_script, os.path.join(user_folder, main_script))
             
             self.bot.edit_message_text(
-                f"✅ **ZIP Processed**\n\n"
-                f"File: `{main_script}`\n"
-                f"Status: Starting...",
+                f"✅ **ZIP Processed**\n\nMain Script: `{main_script}`\n📂 ID: `{file_id}`",
                 chat_id,
                 status_msg.message_id,
                 parse_mode='Markdown'
             )
             
-            self._start_script(user_id, main_script, file_path, ext, status_msg)
-            
         except Exception as e:
             logging.error(f"ZIP processing error: {e}")
             self.bot.edit_message_text(
-                f"❌ **ZIP Error**\n\n"
-                f"Error: {str(e)}",
+                f"❌ **ZIP Error**\n\n{str(e)}",
                 chat_id,
                 status_msg.message_id,
                 parse_mode='Markdown'
@@ -1490,27 +1581,7 @@ class AdvancedBot:
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
     
-    def _find_main_script(self, directory: str) -> Optional[str]:
-        """Find main script in extracted archive"""
-        # Look for common main script names
-        common_names = ['main.py', 'bot.py', 'app.py', 'index.js', 'main.js', 'server.js']
-        
-        for name in common_names:
-            if os.path.exists(os.path.join(directory, name)):
-                return name
-        
-        # Look for any .py or .js file
-        for root, dirs, files in os.walk(directory):
-            # Skip hidden directories
-            dirs[:] = [d for d in dirs if not d.startswith('.') and not d.startswith('__')]
-            
-            for file in files:
-                if file.endswith(('.py', '.js')):
-                    return file
-        
-        return None
-    
-    def _install_dependencies(self, directory: str, status_msg):
+    def _install_dependencies(self, directory, status_msg):
         """Install dependencies from requirements.txt or package.json"""
         chat_id = status_msg.chat.id
         
@@ -1518,9 +1589,7 @@ class AdvancedBot:
         req_path = os.path.join(directory, 'requirements.txt')
         if os.path.exists(req_path):
             self.bot.edit_message_text(
-                f"⏳ **Installing Dependencies**\n\n"
-                f"Found requirements.txt\n"
-                f"Installing Python packages...",
+                f"⏳ **Installing Dependencies**\n\nFound requirements.txt\nInstalling Python packages...",
                 chat_id,
                 status_msg.message_id,
                 parse_mode='Markdown'
@@ -1541,9 +1610,7 @@ class AdvancedBot:
         pkg_path = os.path.join(directory, 'package.json')
         if os.path.exists(pkg_path):
             self.bot.edit_message_text(
-                f"⏳ **Installing Dependencies**\n\n"
-                f"Found package.json\n"
-                f"Installing Node packages...",
+                f"⏳ **Installing Dependencies**\n\nFound package.json\nInstalling Node packages...",
                 chat_id,
                 status_msg.message_id,
                 parse_mode='Markdown'
@@ -1561,105 +1628,59 @@ class AdvancedBot:
             except Exception as e:
                 logging.warning(f"npm install warning: {e}")
     
+    def _find_main_script(self, directory):
+        """Find main script in extracted archive"""
+        common_names = ['main.py', 'bot.py', 'app.py', 'index.js', 'main.js', 'server.js']
+        
+        for name in common_names:
+            if os.path.exists(os.path.join(directory, name)):
+                return name
+        
+        for root, dirs, files in os.walk(directory):
+            dirs[:] = [d for d in dirs if not d.startswith('.') and not d.startswith('__')]
+            for file in files:
+                if file.endswith(('.py', '.js')):
+                    return file
+        
+        return None
+    
     # ============================================================
-    # SCRIPT MANAGEMENT
+    # SCANNING FUNCTIONS
     # ============================================================
     
-    def _start_script(self, user_id: int, file_name: str, file_path: str, file_type: str, status_msg):
-        """Start a script"""
-        chat_id = status_msg.chat.id
-        user_folder = self._get_user_folder(user_id)
-        script_key = f"{user_id}_{file_name}"
+    def _scan_file(self, file_content: bytes, file_name: str, user_id: int) -> dict:
+        """Scan file for malware"""
+        # Owner bypass
+        if user_id == config.OWNER_ID:
+            return {'safe': True, 'reason': 'Owner bypass'}
         
-        # Check if already running
-        if script_key in self.process_manager._processes:
-            self.bot.edit_message_text(
-                f"⚠️ **Already Running**\n\n"
-                f"File: `{file_name}`\n"
-                f"This script is already running.",
-                chat_id,
-                status_msg.message_id,
-                parse_mode='Markdown'
-            )
-            return
+        # Check for executable signatures
+        for sig in config.MALWARE_SIGNATURES:
+            if file_content.startswith(sig):
+                return {'safe': False, 'reason': f'Executable signature detected: {sig.hex()}'}
         
+        # Check for suspicious keywords in first 4KB
         try:
-            if file_type == 'py':
-                command = [sys.executable, file_path]
-            else:
-                command = ['node', file_path]
-            
-            success = self.process_manager.start_process(
-                script_key,
-                command,
-                user_folder,
-                {**os.environ, "PYTHONIOENCODING": "utf-8"}
-            )
-            
-            if success:
-                self.bot.edit_message_text(
-                    f"✅ **Script Started**\n\n"
-                    f"File: `{file_name}`\n"
-                    f"Status: 🟢 Running\n"
-                    f"PID: {self.process_manager._processes[script_key]['pid']}",
-                    chat_id,
-                    status_msg.message_id,
-                    parse_mode='Markdown'
-                )
-                
-                # Update database
-                self._update_file_status(user_id, file_name, True, 
-                                        self.process_manager._processes[script_key]['pid'])
-                
-                # Send notification
-                self.notification_manager.add_notification(
-                    user_id,
-                    "Script Started",
-                    f"Your script `{file_name}` has been started."
-                )
-            else:
-                self.bot.edit_message_text(
-                    f"❌ **Start Failed**\n\n"
-                    f"File: `{file_name}`\n"
-                    f"Could not start the script.",
-                    chat_id,
-                    status_msg.message_id,
-                    parse_mode='Markdown'
-                )
-                
-        except Exception as e:
-            logging.error(f"Start script error: {e}")
-            self.bot.edit_message_text(
-                f"❌ **Start Error**\n\n"
-                f"File: `{file_name}`\n"
-                f"Error: {str(e)}",
-                chat_id,
-                status_msg.message_id,
-                parse_mode='Markdown'
-            )
-    
-    def _stop_script(self, user_id: int, file_id: int, callback: Optional[telebot.types.CallbackQuery] = None):
-        """Stop a running script"""
-        file_data = self._get_file_by_id(file_id)
-        if not file_data:
-            return
+            sample = file_content[:4096].decode('utf-8', errors='ignore')
+            suspicious_keywords = [
+                'ransomware', 'trojan', 'virus', 'malware',
+                'backdoor', 'exploit', 'payload', 'botnet',
+                'keylogger', 'rootkit', 'rm -rf', 'os.remove',
+                'shutil.rmtree', 'subprocess.call', 'eval(', 'exec(',
+                '__import__', 'compile(', 'globals(', 'locals('
+            ]
+            for keyword in suspicious_keywords:
+                if keyword in sample.lower():
+                    return {'safe': False, 'reason': f'Suspicious keyword: {keyword}'}
+        except Exception:
+            pass
         
-        script_key = f"{user_id}_{file_data['file_name']}"
+        # Check file extensions
+        suspicious_extensions = ['.exe', '.dll', '.bat', '.cmd', '.scr', '.com', '.pif', '.application']
+        if any(file_name.lower().endswith(ext) for ext in suspicious_extensions):
+            return {'safe': False, 'reason': 'Suspicious file extension'}
         
-        success = self.process_manager.stop_process(script_key)
-        
-        if success:
-            self._update_file_status(user_id, file_data['file_name'], False)
-            
-            self.notification_manager.add_notification(
-                user_id,
-                "Script Stopped",
-                f"Your script `{file_data['file_name']}` has been stopped."
-            )
-            
-            if callback:
-                self.bot.answer_callback_query(callback.id, "✅ Script stopped")
-                self._handle_files(callback.message)
+        return {'safe': True, 'reason': 'File appears safe'}
     
     # ============================================================
     # CALLBACK HANDLER
@@ -1674,16 +1695,22 @@ class AdvancedBot:
             self.bot.answer_callback_query(call.id, "🚫 You are banned.", show_alert=True)
             return
         
+        # Handle force join check
+        if data == 'check_join':
+            if self._check_force_join(user_id):
+                self.bot.answer_callback_query(call.id, "✅ All channels joined!")
+                self._handle_start(call.message)
+            else:
+                self.bot.answer_callback_query(call.id, "❌ Please join all channels first", show_alert=True)
+            return
+        
         # Main menu
         if data == 'main':
-            user_data = self._get_user_data(user_id)
-            markup = self.menu_manager.main_menu(user_data)
-            self.bot.edit_message_text(
-                self._get_welcome_text(user_data),
+            markup = self._create_main_menu(user_id)
+            self.bot.edit_message_reply_markup(
                 call.message.chat.id,
                 call.message.message_id,
-                reply_markup=markup,
-                parse_mode='Markdown'
+                reply_markup=markup
             )
             self.bot.answer_callback_query(call.id)
         
@@ -1693,27 +1720,22 @@ class AdvancedBot:
             if not files:
                 self.bot.answer_callback_query(call.id, "📂 No files found", show_alert=True)
                 return
-            
-            markup = self.menu_manager.file_management_menu(files)
-            self.bot.edit_message_text(
-                f"📂 **Your Files** ({len(files)} total)",
+            markup = self._create_file_menu(files)
+            self.bot.edit_message_reply_markup(
                 call.message.chat.id,
                 call.message.message_id,
-                reply_markup=markup,
-                parse_mode='Markdown'
+                reply_markup=markup
             )
             self.bot.answer_callback_query(call.id)
         
         # Refresh files
         elif data == 'refresh_files':
             files = self._get_user_files(user_id)
-            markup = self.menu_manager.file_management_menu(files)
-            self.bot.edit_message_text(
-                f"📂 **Your Files** ({len(files)} total)",
+            markup = self._create_file_menu(files)
+            self.bot.edit_message_reply_markup(
                 call.message.chat.id,
                 call.message.message_id,
-                reply_markup=markup,
-                parse_mode='Markdown'
+                reply_markup=markup
             )
             self.bot.answer_callback_query(call.id, "🔄 Refreshed!")
         
@@ -1721,331 +1743,24 @@ class AdvancedBot:
         elif data.startswith('file_page_'):
             page = int(data.split('_')[2])
             files = self._get_user_files(user_id)
-            markup = self.menu_manager.file_management_menu(files, page)
-            self.bot.edit_message_text(
-                f"📂 **Your Files** ({len(files)} total)",
-                call.message.chat.id,
-                call.message.message_id,
-                reply_markup=markup,
-                parse_mode='Markdown'
-            )
-            self.bot.answer_callback_query(call.id)
-        
-        # File management
-        elif data.startswith('file_'):
-            file_id = int(data.split('_')[1])
-            file_data = self._get_file_by_id(file_id)
-            if not file_data:
-                self.bot.answer_callback_query(call.id, "File not found", show_alert=True)
-                return
-            
-            # Check ownership
-            if file_data['user_id'] != user_id and user_id not in [config.OWNER_ID, config.ADMIN_ID]:
-                self.bot.answer_callback_query(call.id, "Not your file", show_alert=True)
-                return
-            
-            markup = self.menu_manager.file_controls_menu(file_data)
-            self.bot.edit_message_text(
-                f"⚙️ **File Controls**\n\n"
-                f"📄 **File:** `{file_data['file_name']}`\n"
-                f"📊 **Type:** {file_data['file_type']}\n"
-                f"📦 **Size:** {file_data.get('file_size', 0) // 1024}KB\n"
-                f"🔄 **Status:** {'🟢 Running' if file_data.get('is_running', False) else '🔴 Stopped'}\n"
-                f"📅 **Uploaded:** {file_data.get('upload_time', 'Unknown')}\n\n"
-                f"Select an action:",
-                call.message.chat.id,
-                call.message.message_id,
-                reply_markup=markup,
-                parse_mode='Markdown'
-            )
-            self.bot.answer_callback_query(call.id)
-        
-        # Start script
-        elif data.startswith('start_'):
-            file_id = int(data.split('_')[1])
-            file_data = self._get_file_by_id(file_id)
-            if not file_data:
-                self.bot.answer_callback_query(call.id, "File not found", show_alert=True)
-                return
-            
-            if file_data['user_id'] != user_id and user_id not in [config.OWNER_ID, config.ADMIN_ID]:
-                self.bot.answer_callback_query(call.id, "Not your file", show_alert=True)
-                return
-            
-            # Check if already running
-            script_key = f"{user_id}_{file_data['file_name']}"
-            if script_key in self.process_manager._processes:
-                self.bot.answer_callback_query(call.id, "⚠️ Already running", show_alert=True)
-                return
-            
-            self.bot.answer_callback_query(call.id, "⏳ Starting...")
-            
-            file_path = os.path.join(self._get_user_folder(user_id), file_data['file_name'])
-            self._start_script(
-                user_id, 
-                file_data['file_name'], 
-                file_path, 
-                file_data['file_type'],
-                call.message
-            )
-            
-            # Refresh controls
-            time.sleep(1)
-            updated_data = self._get_file_by_id(file_id)
-            markup = self.menu_manager.file_controls_menu(updated_data)
+            menu_manager = MenuManager(user_id)
+            markup = menu_manager.file_management_menu(files, page)
             self.bot.edit_message_reply_markup(
                 call.message.chat.id,
                 call.message.message_id,
                 reply_markup=markup
             )
-        
-        # Stop script
-        elif data.startswith('stop_'):
-            file_id = int(data.split('_')[1])
-            self._stop_script(user_id, file_id, call)
-        
-        # Restart script
-        elif data.startswith('restart_'):
-            file_id = int(data.split('_')[1])
-            file_data = self._get_file_by_id(file_id)
-            if not file_data:
-                self.bot.answer_callback_query(call.id, "File not found", show_alert=True)
-                return
-            
-            if file_data['user_id'] != user_id and user_id not in [config.OWNER_ID, config.ADMIN_ID]:
-                self.bot.answer_callback_query(call.id, "Not your file", show_alert=True)
-                return
-            
-            self.bot.answer_callback_query(call.id, "⏳ Restarting...")
-            
-            # Stop first
-            self._stop_script(user_id, file_id)
-            time.sleep(1)
-            
-            # Then start
-            file_path = os.path.join(self._get_user_folder(user_id), file_data['file_name'])
-            self._start_script(
-                user_id,
-                file_data['file_name'],
-                file_path,
-                file_data['file_type'],
-                call.message
-            )
-            
-            # Refresh controls
-            time.sleep(1)
-            updated_data = self._get_file_by_id(file_id)
-            markup = self.menu_manager.file_controls_menu(updated_data)
-            self.bot.edit_message_reply_markup(
-                call.message.chat.id,
-                call.message.message_id,
-                reply_markup=markup
-            )
-        
-        # Delete script
-        elif data.startswith('delete_'):
-            file_id = int(data.split('_')[1])
-            file_data = self._get_file_by_id(file_id)
-            if not file_data:
-                self.bot.answer_callback_query(call.id, "File not found", show_alert=True)
-                return
-            
-            if file_data['user_id'] != user_id and user_id not in [config.OWNER_ID, config.ADMIN_ID]:
-                self.bot.answer_callback_query(call.id, "Not your file", show_alert=True)
-                return
-            
-            # Stop if running
-            if file_data.get('is_running', False):
-                self._stop_script(user_id, file_id)
-            
-            # Delete file
-            file_path = os.path.join(self._get_user_folder(user_id), file_data['file_name'])
-            log_path = os.path.join(self._get_user_folder(user_id), 
-                                   f"{os.path.splitext(file_data['file_name'])[0]}.log")
-            
-            try:
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                if os.path.exists(log_path):
-                    os.remove(log_path)
-            except Exception as e:
-                logging.error(f"Delete file error: {e}")
-            
-            # Remove from database
-            self._delete_file_record(file_id)
-            
-            self.bot.answer_callback_query(call.id, "🗑️ Deleted!")
-            
-            # Back to files
-            files = self._get_user_files(user_id)
-            markup = self.menu_manager.file_management_menu(files)
-            self.bot.edit_message_text(
-                f"📂 **Your Files** ({len(files)} total)",
-                call.message.chat.id,
-                call.message.message_id,
-                reply_markup=markup,
-                parse_mode='Markdown'
-            )
-        
-        # Logs
-        elif data.startswith('logs_'):
-            file_id = int(data.split('_')[1])
-            file_data = self._get_file_by_id(file_id)
-            if not file_data:
-                self.bot.answer_callback_query(call.id, "File not found", show_alert=True)
-                return
-            
-            if file_data['user_id'] != user_id and user_id not in [config.OWNER_ID, config.ADMIN_ID]:
-                self.bot.answer_callback_query(call.id, "Not your file", show_alert=True)
-                return
-            
-            log_path = os.path.join(
-                self._get_user_folder(user_id),
-                f"{os.path.splitext(file_data['file_name'])[0]}.log"
-            )
-            
-            if not os.path.exists(log_path):
-                self.bot.answer_callback_query(call.id, "📜 No logs yet", show_alert=True)
-                return
-            
-            try:
-                with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    log_content = f.read()
-                
-                if len(log_content) > 4000:
-                    log_content = log_content[-4000:]
-                    log_content = "...\n" + log_content
-                
-                self.bot.send_message(
-                    call.message.chat.id,
-                    f"📜 **Logs for `{file_data['file_name']}`**\n\n```\n{log_content}\n```",
-                    parse_mode='Markdown'
-                )
-                self.bot.answer_callback_query(call.id)
-            except Exception as e:
-                self.bot.answer_callback_query(call.id, f"Error: {str(e)}", show_alert=True)
-        
-        # Download
-        elif data.startswith('download_'):
-            file_id = int(data.split('_')[1])
-            file_data = self._get_file_by_id(file_id)
-            if not file_data:
-                self.bot.answer_callback_query(call.id, "File not found", show_alert=True)
-                return
-            
-            if file_data['user_id'] != user_id and user_id not in [config.OWNER_ID, config.ADMIN_ID]:
-                self.bot.answer_callback_query(call.id, "Not your file", show_alert=True)
-                return
-            
-            file_path = os.path.join(self._get_user_folder(user_id), file_data['file_name'])
-            
-            if not os.path.exists(file_path):
-                self.bot.answer_callback_query(call.id, "File not found on disk", show_alert=True)
-                return
-            
-            try:
-                with open(file_path, 'rb') as f:
-                    self.bot.send_document(
-                        call.message.chat.id,
-                        f,
-                        caption=f"📥 **{file_data['file_name']}**"
-                    )
-                self.bot.answer_callback_query(call.id, "📥 Downloading...")
-            except Exception as e:
-                self.bot.answer_callback_query(call.id, f"Error: {str(e)}", show_alert=True)
-        
-        # Backup
-        elif data.startswith('backup_'):
-            file_id = int(data.split('_')[1])
-            file_data = self._get_file_by_id(file_id)
-            if not file_data:
-                self.bot.answer_callback_query(call.id, "File not found", show_alert=True)
-                return
-            
-            if file_data['user_id'] != user_id and user_id not in [config.OWNER_ID, config.ADMIN_ID]:
-                self.bot.answer_callback_query(call.id, "Not your file", show_alert=True)
-                return
-            
-            file_path = os.path.join(self._get_user_folder(user_id), file_data['file_name'])
-            
-            if not os.path.exists(file_path):
-                self.bot.answer_callback_query(call.id, "File not found on disk", show_alert=True)
-                return
-            
-            backup_id = self.backup_manager.create_backup(user_id, file_data['file_name'], file_path)
-            
-            if backup_id:
-                self.bot.answer_callback_query(call.id, "💾 Backup created!")
-            else:
-                self.bot.answer_callback_query(call.id, "❌ Backup failed", show_alert=True)
-        
-        # Resources
-        elif data.startswith('resources_'):
-            file_id = int(data.split('_')[1])
-            file_data = self._get_file_by_id(file_id)
-            if not file_data:
-                self.bot.answer_callback_query(call.id, "File not found", show_alert=True)
-                return
-            
-            if file_data['user_id'] != user_id and user_id not in [config.OWNER_ID, config.ADMIN_ID]:
-                self.bot.answer_callback_query(call.id, "Not your file", show_alert=True)
-                return
-            
-            script_key = f"{user_id}_{file_data['file_name']}"
-            process_info = self.process_manager.get_process_info(script_key)
-            
-            if process_info and process_info.get('is_running', False):
-                resource_text = (
-                    f"📊 **Resource Usage**\n\n"
-                    f"📄 **File:** `{file_data['file_name']}`\n"
-                    f"🆔 **PID:** {process_info.get('pid', 'N/A')}\n"
-                    f"🧠 **CPU:** {process_info.get('cpu_percent', 0):.1f}%\n"
-                    f"💾 **Memory:** {process_info.get('memory_mb', 0):.1f} MB\n"
-                    f"🧵 **Threads:** {process_info.get('threads', 0)}\n"
-                    f"⏱️ **Uptime:** {self._format_uptime(process_info.get('start_time'))}"
-                )
-                self.bot.send_message(
-                    call.message.chat.id,
-                    resource_text,
-                    parse_mode='Markdown'
-                )
-            else:
-                self.bot.answer_callback_query(call.id, "Script is not running", show_alert=True)
-        
-        # Settings
-        elif data == 'settings':
-            markup = self.menu_manager.settings_menu()
-            self.bot.edit_message_text(
-                "⚙️ **Settings**\n\nCustomize your bot experience:",
-                call.message.chat.id,
-                call.message.message_id,
-                reply_markup=markup,
-                parse_mode='Markdown'
-            )
-            self.bot.answer_callback_query(call.id)
-        
-        # Premium
-        elif data == 'premium':
-            self.bot.answer_callback_query(call.id, "💎 Premium features coming soon!", show_alert=True)
-        
-        # Admin actions
-        elif data.startswith('admin_'):
-            self._handle_admin_callback(call)
-        
-        # Upload
-        elif data == 'upload':
-            self._handle_upload(call.message)
             self.bot.answer_callback_query(call.id)
         
         # Stats
         elif data == 'stats':
+            self.bot.answer_callback_query(call.id)
             self._handle_stats(call.message)
-            self.bot.answer_callback_query(call.id)
         
-        # Profile
-        elif data == 'profile':
-            self._handle_profile(call.message)
+        # Upload
+        elif data == 'upload':
             self.bot.answer_callback_query(call.id)
+            self._handle_upload(call.message)
         
         # Speed
         elif data == 'speed':
@@ -2067,79 +1782,162 @@ class AdvancedBot:
         
         # Help
         elif data == 'help':
-            self._handle_help(call.message)
-            self.bot.answer_callback_query(call.id)
-        
-        # No operation
-        elif data == 'noop':
-            self.bot.answer_callback_query(call.id)
-        
-        else:
-            self.bot.answer_callback_query(call.id, "Unknown action", show_alert=True)
-            logging.warning(f"Unknown callback: {data}")
-    
-    # ============================================================
-    # ADMIN CALLBACKS
-    # ============================================================
-    
-    def _handle_admin_callback(self, call):
-        """Handle admin panel callbacks"""
-        user_id = call.from_user.id
-        
-        if user_id not in [config.OWNER_ID, config.ADMIN_ID]:
-            self.bot.answer_callback_query(call.id, "⚠️ Admin required", show_alert=True)
-            return
-        
-        data = call.data
-        
-        if data == 'admin_users':
-            users = self._get_all_users()
-            user_text = f"👥 **Users** ({len(users)} total)\n\n"
-            for user in users[:10]:
-                user_text += f"• `{user['user_id']}` - {user.get('first_name', 'Unknown')}\n"
-            if len(users) > 10:
-                user_text += f"\n... and {len(users) - 10} more"
-            
-            self.bot.send_message(call.message.chat.id, user_text, parse_mode='Markdown')
-            self.bot.answer_callback_query(call.id)
-        
-        elif data == 'admin_analytics':
-            analytics = self._get_analytics()
-            analytics_text = (
-                f"📊 **Analytics**\n\n"
-                f"👥 **Total Users:** {analytics.get('total_users', 0)}\n"
-                f"📂 **Total Files:** {analytics.get('total_files', 0)}\n"
-                f"🟢 **Running Bots:** {analytics.get('running_bots', 0)}\n"
-                f"📤 **Total Uploads:** {analytics.get('total_uploads', 0)}\n"
-                f"💾 **Storage Used:** {analytics.get('storage_used', '0 MB')}\n"
-                f"📅 **Active Today:** {analytics.get('active_today', 0)}"
+            help_text = (
+                "🆘 **Help & Support**\n\n"
+                "**Commands:**\n"
+                "/start - Start the bot\n"
+                "/help - Show this help\n"
+                "/upload - Upload a file\n"
+                "/myfiles - View your files\n"
+                "/stats - View statistics\n"
+                "/profile - View your profile\n"
+                "/settings - Change settings\n"
+                "/ping - Check bot latency\n"
+                "/backup - Backup your files\n"
+                "/restore - Restore from backup\n\n"
+                "**File Types:**\n"
+                "• Python (.py)\n"
+                "• JavaScript (.js)\n"
+                "• ZIP Archives (.zip)\n\n"
+                "**Admin Commands:**\n"
+                "/admin - Admin panel\n"
+                "/lock - Lock the bot\n"
+                "/unlock - Unlock the bot\n"
+                "/broadcast - Send broadcast\n"
+                "/ban - Ban a user\n"
+                "/unban - Unban a user\n"
+                "/listusers - List all users\n"
+                "/cleanup - Cleanup system\n\n"
+                f"**Contact:** {config.YOUR_USERNAME}"
             )
-            self.bot.send_message(call.message.chat.id, analytics_text, parse_mode='Markdown')
+            self.bot.send_message(call.message.chat.id, help_text, parse_mode='Markdown')
             self.bot.answer_callback_query(call.id)
         
-        elif data == 'admin_subscriptions':
-            subscriptions = self._get_all_subscriptions()
-            sub_text = f"💳 **Subscriptions** ({len(subscriptions)} total)\n\n"
-            for sub in subscriptions[:10]:
-                sub_text += f"• `{sub['user_id']}` - {sub.get('plan', 'premium')} - Expires: {sub.get('expiry', 'N/A')}\n"
-            if len(subscriptions) > 10:
-                sub_text += f"\n... and {len(subscriptions) - 10} more"
+        # Settings
+        elif data == 'settings':
+            markup = types.InlineKeyboardMarkup(row_width=2)
+            markup.add(
+                types.InlineKeyboardButton("🌐 Language", callback_data='settings_lang'),
+                types.InlineKeyboardButton("🔔 Notifications", callback_data='settings_notif')
+            )
+            markup.add(
+                types.InlineKeyboardButton("📋 Export Data", callback_data='settings_export'),
+                types.InlineKeyboardButton("🗑️ Clear Data", callback_data='settings_clear')
+            )
+            markup.add(types.InlineKeyboardButton("🔙 Back", callback_data='main'))
             
-            self.bot.send_message(call.message.chat.id, sub_text, parse_mode='Markdown')
+            self.bot.edit_message_text(
+                "⚙️ **Settings**\n\nCustomize your bot experience:",
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=markup,
+                parse_mode='Markdown'
+            )
             self.bot.answer_callback_query(call.id)
         
-        elif data == 'admin_banned':
-            banned = self._get_banned_users()
-            if banned:
-                ban_text = "🚫 **Banned Users**\n\n"
-                for user in banned:
-                    ban_text += f"• `{user['user_id']}` - {user.get('ban_reason', 'No reason')}\n"
-                self.bot.send_message(call.message.chat.id, ban_text, parse_mode='Markdown')
-            else:
-                self.bot.send_message(call.message.chat.id, "🚫 No banned users.")
+        # Profile
+        elif data == 'profile':
+            self.bot.answer_callback_query(call.id)
+            self._handle_profile(call.message)
+        
+        # File management
+        elif data.startswith('file_'):
+            file_id = int(data.split('_')[1])
+            file_data = self._get_file_by_id(file_id)
+            if not file_data:
+                self.bot.answer_callback_query(call.id, "File not found", show_alert=True)
+                return
+            
+            # Check ownership
+            if file_data['user_id'] != user_id and user_id not in self.admin_ids:
+                self.bot.answer_callback_query(call.id, "Not your file", show_alert=True)
+                return
+            
+            markup = self._create_file_controls(file_data)
+            self.bot.edit_message_reply_markup(
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=markup
+            )
+            self.bot.answer_callback_query(call.id)
+        
+        # File controls
+        elif data.startswith('start_'):
+            file_id = int(data.split('_')[1])
+            self._start_file(file_id, user_id, call)
+        
+        elif data.startswith('stop_'):
+            file_id = int(data.split('_')[1])
+            self._stop_file(file_id, user_id, call)
+        
+        elif data.startswith('restart_'):
+            file_id = int(data.split('_')[1])
+            self._restart_file(file_id, user_id, call)
+        
+        elif data.startswith('delete_'):
+            file_id = int(data.split('_')[1])
+            self._delete_file(file_id, user_id, call)
+        
+        elif data.startswith('logs_'):
+            file_id = int(data.split('_')[1])
+            self._view_logs(file_id, user_id, call)
+        
+        elif data.startswith('download_'):
+            file_id = int(data.split('_')[1])
+            self._download_file(file_id, user_id, call)
+        
+        elif data.startswith('backup_'):
+            file_id = int(data.split('_')[1])
+            self._backup_file(file_id, user_id, call)
+        
+        elif data.startswith('backup_file_'):
+            file_id = int(data.split('_')[2])
+            self._backup_file(file_id, user_id, call)
+        
+        elif data.startswith('restore_'):
+            backup_id = data.split('_')[1]
+            self._restore_backup(backup_id, user_id, call)
+        
+        elif data.startswith('resources_'):
+            file_id = int(data.split('_')[1])
+            self._view_resources(file_id, user_id, call)
+        
+        # Admin panel
+        elif data == 'admin_panel':
+            if user_id not in self.admin_ids:
+                self.bot.answer_callback_query(call.id, "⚠️ Admin required", show_alert=True)
+                return
+            markup = self._create_admin_menu()
+            self.bot.edit_message_reply_markup(
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=markup
+            )
+            self.bot.answer_callback_query(call.id)
+        
+        elif data == 'admin_stats':
+            if user_id not in self.admin_ids:
+                return
+            total_users = len(self._get_all_users())
+            total_files = self._get_total_files()
+            running_processes = len(self.process_manager.get_all_processes())
+            storage_used = self._get_storage_used()
+            
+            self.bot.send_message(
+                call.message.chat.id,
+                f"📊 **Admin Statistics**\n\n"
+                f"👥 **Users:** {total_users}\n"
+                f"📂 **Files:** {total_files}\n"
+                f"🟢 **Running Bots:** {running_processes}\n"
+                f"💾 **Storage:** {self._format_size(storage_used)}\n"
+                f"🔒 **Bot:** {'Locked' if self.bot_locked else 'Unlocked'}",
+                parse_mode='Markdown'
+            )
             self.bot.answer_callback_query(call.id)
         
         elif data == 'admin_lock':
+            if user_id not in self.admin_ids:
+                return
             self.bot_locked = not self.bot_locked
             status = "locked" if self.bot_locked else "unlocked"
             self.bot.answer_callback_query(call.id, f"🔒 Bot {status}!")
@@ -2149,11 +1947,15 @@ class AdvancedBot:
                 parse_mode='Markdown'
             )
         
-        elif data == 'admin_run_all':
-            self.bot.answer_callback_query(call.id, "⏳ Starting all scripts...")
-            self._run_all_scripts(call.message.chat.id)
+        elif data == 'admin_broadcast':
+            if user_id not in self.admin_ids:
+                return
+            self.bot.answer_callback_query(call.id)
+            self._handle_broadcast(call.message)
         
         elif data == 'admin_cleanup':
+            if user_id not in self.admin_ids:
+                return
             self.bot.answer_callback_query(call.id, "🧹 Cleaning up...")
             self._cleanup_system()
             self.bot.send_message(
@@ -2165,96 +1967,400 @@ class AdvancedBot:
                 parse_mode='Markdown'
             )
         
-        elif data == 'admin_status':
-            status_text = self._get_system_status()
+        elif data == 'admin_users':
+            if user_id not in self.admin_ids:
+                return
+            users = self._get_all_users()
+            user_text = f"👥 **Users** ({len(users)} total)\n\n"
+            for i, user in enumerate(users[:20], 1):
+                status = "🔴 Banned" if user.get('is_banned', False) else "🟢 Active"
+                user_text += f"{i}. `{user['user_id']}` - {user.get('first_name', 'Unknown')} ({status})\n"
+            if len(users) > 20:
+                user_text += f"\n... and {len(users) - 20} more"
+            
+            self.bot.send_message(call.message.chat.id, user_text, parse_mode='Markdown')
+            self.bot.answer_callback_query(call.id)
+        
+        elif data == 'admin_banned':
+            if user_id not in self.admin_ids:
+                return
+            banned = self._get_banned_users()
+            if banned:
+                ban_text = "🚫 **Banned Users**\n\n"
+                for user in banned:
+                    ban_text += f"• `{user['user_id']}` - {user.get('ban_reason', 'No reason')}\n"
+                self.bot.send_message(call.message.chat.id, ban_text, parse_mode='Markdown')
+            else:
+                self.bot.send_message(call.message.chat.id, "🚫 No banned users.")
+            self.bot.answer_callback_query(call.id)
+        
+        elif data == 'admin_run_all':
+            if user_id not in self.admin_ids:
+                return
+            self.bot.answer_callback_query(call.id, "⏳ Starting all scripts...")
+            self._run_all_scripts(call.message.chat.id)
+        
+        elif data == 'admin_backup_all':
+            if user_id not in self.admin_ids:
+                return
+            self.bot.answer_callback_query(call.id, "💾 Backing up all files...")
+            self._backup_all_files(call.message.chat.id)
+        
+        elif data == 'admin_restore_all':
+            if user_id not in self.admin_ids:
+                return
+            self.bot.answer_callback_query(call.id, "📥 Restoring all files...")
+            self._restore_all_files(call.message.chat.id)
+        
+        # Settings actions
+        elif data == 'settings_lang':
+            self.bot.answer_callback_query(call.id, "🌐 Language settings coming soon!", show_alert=True)
+        
+        elif data == 'settings_notif':
+            self.bot.answer_callback_query(call.id, "🔔 Notification settings coming soon!", show_alert=True)
+        
+        elif data == 'settings_export':
+            self.bot.answer_callback_query(call.id, "📋 Exporting your data...")
+            self._export_user_data(user_id, call.message.chat.id)
+        
+        elif data == 'settings_clear':
+            self.bot.answer_callback_query(call.id, "🗑️ Clear your data? Use /myfiles to delete files.", show_alert=True)
+        
+        # No operation
+        elif data == 'noop':
+            self.bot.answer_callback_query(call.id)
+        
+        else:
+            self.bot.answer_callback_query(call.id, "Unknown action", show_alert=True)
+            logging.warning(f"Unknown callback: {data}")
+    
+    # ============================================================
+    # FILE CONTROL FUNCTIONS
+    # ============================================================
+    
+    def _start_file(self, file_id, user_id, call):
+        """Start a file"""
+        file_data = self._get_file_by_id(file_id)
+        if not file_data:
+            self.bot.answer_callback_query(call.id, "File not found", show_alert=True)
+            return
+        
+        if file_data['user_id'] != user_id and user_id not in self.admin_ids:
+            self.bot.answer_callback_query(call.id, "Not your file", show_alert=True)
+            return
+        
+        script_key = f"{user_id}_{file_data['file_name']}"
+        
+        # Check if already running
+        if script_key in self.process_manager._processes:
+            self.bot.answer_callback_query(call.id, "⚠️ Already running", show_alert=True)
+            return
+        
+        self.bot.answer_callback_query(call.id, "⏳ Starting...")
+        
+        file_path = os.path.join(self._get_user_folder(user_id), file_data['file_name'])
+        
+        if not os.path.exists(file_path):
+            self.bot.send_message(call.message.chat.id, f"❌ File `{file_data['file_name']}` not found on disk.", parse_mode='Markdown')
+            return
+        
+        try:
+            if file_data['file_type'] == 'py':
+                command = [sys.executable, file_path]
+            else:
+                command = ['node', file_path]
+            
+            success = self.process_manager.start_process(
+                script_key,
+                command,
+                self._get_user_folder(user_id),
+                {**os.environ, "PYTHONIOENCODING": "utf-8"}
+            )
+            
+            if success:
+                self._update_file_status(user_id, file_data['file_name'], True, 
+                                        self.process_manager._processes[script_key]['pid'])
+                self.bot.send_message(
+                    call.message.chat.id,
+                    f"✅ **Script Started**\n\nFile: `{file_data['file_name']}`\n🟢 Running",
+                    parse_mode='Markdown'
+                )
+            else:
+                self.bot.send_message(
+                    call.message.chat.id,
+                    f"❌ **Start Failed**\n\nFile: `{file_data['file_name']}`",
+                    parse_mode='Markdown'
+                )
+                
+        except Exception as e:
+            logging.error(f"Start file error: {e}")
             self.bot.send_message(
                 call.message.chat.id,
-                status_text,
+                f"❌ **Start Error**\n\n{str(e)}",
                 parse_mode='Markdown'
             )
-            self.bot.answer_callback_query(call.id)
+        
+        # Refresh controls
+        updated_data = self._get_file_by_id(file_id)
+        markup = self._create_file_controls(updated_data)
+        self.bot.edit_message_reply_markup(
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=markup
+        )
     
-    # ============================================================
-    # BROADCAST
-    # ============================================================
+    def _stop_file(self, file_id, user_id, call):
+        """Stop a file"""
+        file_data = self._get_file_by_id(file_id)
+        if not file_data:
+            self.bot.answer_callback_query(call.id, "File not found", show_alert=True)
+            return
+        
+        if file_data['user_id'] != user_id and user_id not in self.admin_ids:
+            self.bot.answer_callback_query(call.id, "Not your file", show_alert=True)
+            return
+        
+        script_key = f"{user_id}_{file_data['file_name']}"
+        
+        success = self.process_manager.stop_process(script_key)
+        
+        if success:
+            self._update_file_status(user_id, file_data['file_name'], False)
+            self.bot.answer_callback_query(call.id, "⏹️ Stopped!")
+            self.bot.send_message(
+                call.message.chat.id,
+                f"⏹️ **Script Stopped**\n\nFile: `{file_data['file_name']}`\n🔴 Stopped",
+                parse_mode='Markdown'
+            )
+        else:
+            self.bot.answer_callback_query(call.id, "❌ Stop failed", show_alert=True)
+        
+        # Refresh controls
+        updated_data = self._get_file_by_id(file_id)
+        markup = self._create_file_controls(updated_data)
+        self.bot.edit_message_reply_markup(
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=markup
+        )
     
-    def _process_broadcast(self, message):
-        """Process broadcast message"""
-        user_id = message.from_user.id
+    def _restart_file(self, file_id, user_id, call):
+        """Restart a file"""
+        self.bot.answer_callback_query(call.id, "⏳ Restarting...")
         
-        if user_id not in [config.OWNER_ID, config.ADMIN_ID]:
+        # Stop first
+        self._stop_file(file_id, user_id, call)
+        time.sleep(1)
+        
+        # Then start
+        self._start_file(file_id, user_id, call)
+    
+    def _delete_file(self, file_id, user_id, call):
+        """Delete a file"""
+        file_data = self._get_file_by_id(file_id)
+        if not file_data:
+            self.bot.answer_callback_query(call.id, "File not found", show_alert=True)
             return
         
-        if message.text and message.text.lower() == '/cancel':
-            self.bot.reply_to(message, "📢 Broadcast cancelled.")
+        if file_data['user_id'] != user_id and user_id not in self.admin_ids:
+            self.bot.answer_callback_query(call.id, "Not your file", show_alert=True)
             return
         
-        # Get all users
-        users = self._get_all_users()
+        # Stop if running
+        if file_data.get('is_running', False):
+            script_key = f"{user_id}_{file_data['file_name']}"
+            self.process_manager.stop_process(script_key)
         
-        if not users:
-            self.bot.reply_to(message, "❌ No users to broadcast to.")
-            return
+        # Delete from database
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM user_files WHERE id = ?', (file_id,))
+            conn.commit()
         
-        # Confirmation
-        markup = types.InlineKeyboardMarkup()
-        markup.add(
-            types.InlineKeyboardButton("✅ Confirm", callback_data=f"confirm_broadcast_{message.message_id}"),
-            types.InlineKeyboardButton("❌ Cancel", callback_data="cancel_broadcast")
+        # Delete from disk
+        file_path = os.path.join(self._get_user_folder(user_id), file_data['file_name'])
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        
+        # Delete log
+        log_path = os.path.join(self._get_user_folder(user_id), 
+                               f"{os.path.splitext(file_data['file_name'])[0]}.log")
+        if os.path.exists(log_path):
+            os.remove(log_path)
+        
+        self.bot.answer_callback_query(call.id, "🗑️ Deleted!")
+        self.bot.send_message(
+            call.message.chat.id,
+            f"🗑️ **File Deleted**\n\nFile: `{file_data['file_name']}`",
+            parse_mode='Markdown'
         )
         
-        self.bot.reply_to(
-            message,
-            f"📢 **Broadcast Confirmation**\n\n"
-            f"Sending to **{len(users)}** users.\n\n"
-            f"Message preview:\n"
-            f"```\n{message.text[:200]}{'...' if len(message.text or '') > 200 else ''}\n```\n"
-            f"Are you sure?",
+        # Back to files
+        files = self._get_user_files(user_id)
+        markup = self._create_file_menu(files)
+        self.bot.edit_message_text(
+            f"📂 **Your Files** ({len(files)} total)",
+            call.message.chat.id,
+            call.message.message_id,
             reply_markup=markup,
             parse_mode='Markdown'
         )
     
-    def _execute_broadcast(self, message_id: int, chat_id: int):
-        """Execute broadcast"""
-        # Get the original message
-        try:
-            original_msg = self.bot.get_chat(chat_id).last_message
-            # This is simplified - actual implementation would get the message
-            # from the database or cache
-        except Exception as e:
-            logging.error(f"Broadcast error: {e}")
+    def _view_logs(self, file_id, user_id, call):
+        """View file logs"""
+        file_data = self._get_file_by_id(file_id)
+        if not file_data:
+            self.bot.answer_callback_query(call.id, "File not found", show_alert=True)
             return
         
-        users = self._get_all_users()
-        success = 0
-        failed = 0
+        if file_data['user_id'] != user_id and user_id not in self.admin_ids:
+            self.bot.answer_callback_query(call.id, "Not your file", show_alert=True)
+            return
         
-        for user in users:
-            try:
-                self.bot.send_message(
-                    user['user_id'],
-                    original_msg.text
+        log_path = os.path.join(self._get_user_folder(user_id), 
+                               f"{os.path.splitext(file_data['file_name'])[0]}.log")
+        
+        if not os.path.exists(log_path):
+            self.bot.answer_callback_query(call.id, "📜 No logs yet", show_alert=True)
+            return
+        
+        try:
+            with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+                log_content = f.read()
+            
+            if len(log_content) > 4000:
+                log_content = log_content[-4000:]
+                log_content = "...\n" + log_content
+            
+            self.bot.send_message(
+                call.message.chat.id,
+                f"📜 **Logs for `{file_data['file_name']}`**\n\n```\n{log_content}\n```",
+                parse_mode='Markdown'
+            )
+            self.bot.answer_callback_query(call.id)
+        except Exception as e:
+            self.bot.answer_callback_query(call.id, f"Error: {str(e)}", show_alert=True)
+    
+    def _download_file(self, file_id, user_id, call):
+        """Download a file"""
+        file_data = self._get_file_by_id(file_id)
+        if not file_data:
+            self.bot.answer_callback_query(call.id, "File not found", show_alert=True)
+            return
+        
+        if file_data['user_id'] != user_id and user_id not in self.admin_ids:
+            self.bot.answer_callback_query(call.id, "Not your file", show_alert=True)
+            return
+        
+        file_path = os.path.join(self._get_user_folder(user_id), file_data['file_name'])
+        
+        if not os.path.exists(file_path):
+            self.bot.answer_callback_query(call.id, "File not found on disk", show_alert=True)
+            return
+        
+        try:
+            with open(file_path, 'rb') as f:
+                self.bot.send_document(
+                    call.message.chat.id,
+                    f,
+                    caption=f"📥 **{file_data['file_name']}**"
                 )
-                success += 1
-                time.sleep(0.05)
-            except Exception as e:
-                failed += 1
-                logging.warning(f"Broadcast failed to {user['user_id']}: {e}")
+            self.bot.answer_callback_query(call.id, "📥 Downloading...")
+        except Exception as e:
+            self.bot.answer_callback_query(call.id, f"Error: {str(e)}", show_alert=True)
+    
+    def _backup_file(self, file_id, user_id, call):
+        """Backup a file"""
+        file_data = self._get_file_by_id(file_id)
+        if not file_data:
+            self.bot.answer_callback_query(call.id, "File not found", show_alert=True)
+            return
         
-        self.bot.send_message(
-            chat_id,
-            f"📢 **Broadcast Complete**\n\n"
-            f"✅ Sent: {success}\n"
-            f"❌ Failed: {failed}\n"
-            f"👥 Total: {len(users)}",
-            parse_mode='Markdown'
-        )
+        if file_data['user_id'] != user_id and user_id not in self.admin_ids:
+            self.bot.answer_callback_query(call.id, "Not your file", show_alert=True)
+            return
+        
+        file_path = os.path.join(self._get_user_folder(user_id), file_data['file_name'])
+        
+        if not os.path.exists(file_path):
+            self.bot.answer_callback_query(call.id, "File not found on disk", show_alert=True)
+            return
+        
+        backup_id = self.backup_manager.create_backup(user_id, file_data['file_name'], file_path)
+        
+        if backup_id:
+            self.bot.answer_callback_query(call.id, "💾 Backup created!")
+            self.bot.send_message(
+                call.message.chat.id,
+                f"💾 **Backup Created**\n\nFile: `{file_data['file_name']}`\nID: `{backup_id}`",
+                parse_mode='Markdown'
+            )
+        else:
+            self.bot.answer_callback_query(call.id, "❌ Backup failed", show_alert=True)
+    
+    def _restore_backup(self, backup_id, user_id, call):
+        """Restore from backup"""
+        backups = self.backup_manager.list_backups(user_id)
+        backup = next((b for b in backups if b['backup_id'] == backup_id), None)
+        
+        if not backup:
+            self.bot.answer_callback_query(call.id, "Backup not found", show_alert=True)
+            return
+        
+        file_name = backup['file_name']
+        file_path = os.path.join(self._get_user_folder(user_id), file_name)
+        
+        success = self.backup_manager.restore_backup(backup_id, file_path)
+        
+        if success:
+            self.bot.answer_callback_query(call.id, "📥 Restored!")
+            self.bot.send_message(
+                call.message.chat.id,
+                f"📥 **Backup Restored**\n\nFile: `{file_name}`",
+                parse_mode='Markdown'
+            )
+        else:
+            self.bot.answer_callback_query(call.id, "❌ Restore failed", show_alert=True)
+    
+    def _view_resources(self, file_id, user_id, call):
+        """View resource usage"""
+        file_data = self._get_file_by_id(file_id)
+        if not file_data:
+            self.bot.answer_callback_query(call.id, "File not found", show_alert=True)
+            return
+        
+        if file_data['user_id'] != user_id and user_id not in self.admin_ids:
+            self.bot.answer_callback_query(call.id, "Not your file", show_alert=True)
+            return
+        
+        script_key = f"{user_id}_{file_data['file_name']}"
+        process_info = self.process_manager.get_process_info(script_key)
+        
+        if process_info and process_info.get('is_running', False):
+            resource_text = (
+                f"📊 **Resource Usage**\n\n"
+                f"📄 **File:** `{file_data['file_name']}`\n"
+                f"🆔 **PID:** {process_info.get('pid', 'N/A')}\n"
+                f"🧠 **CPU:** {process_info.get('cpu_percent', 0):.1f}%\n"
+                f"💾 **Memory:** {process_info.get('memory_mb', 0):.1f} MB\n"
+                f"🧵 **Threads:** {process_info.get('threads', 0)}\n"
+                f"⏱️ **Uptime:** {self._format_uptime(process_info.get('start_time'))}"
+            )
+            self.bot.send_message(
+                call.message.chat.id,
+                resource_text,
+                parse_mode='Markdown'
+            )
+        else:
+            self.bot.answer_callback_query(call.id, "Script is not running", show_alert=True)
+        
+        self.bot.answer_callback_query(call.id)
     
     # ============================================================
-    # SYSTEM FUNCTIONS
+    # ADMIN FUNCTIONS
     # ============================================================
     
-    def _run_all_scripts(self, chat_id: int):
+    def _run_all_scripts(self, chat_id):
         """Run all user scripts"""
         users = self._get_all_users()
         started = 0
@@ -2269,13 +2375,19 @@ class AdvancedBot:
                         file_data['file_name']
                     )
                     if os.path.exists(file_path):
-                        self._start_script(
-                            user['user_id'],
-                            file_data['file_name'],
-                            file_path,
-                            file_data['file_type'],
-                            None
+                        if file_data['file_type'] == 'py':
+                            command = [sys.executable, file_path]
+                        else:
+                            command = ['node', file_path]
+                        
+                        script_key = f"{user['user_id']}_{file_data['file_name']}"
+                        self.process_manager.start_process(
+                            script_key,
+                            command,
+                            self._get_user_folder(user['user_id']),
+                            {**os.environ, "PYTHONIOENCODING": "utf-8"}
                         )
+                        self._update_file_status(user['user_id'], file_data['file_name'], True)
                         started += 1
                         time.sleep(0.5)
                     else:
@@ -2286,6 +2398,55 @@ class AdvancedBot:
             f"🔄 **Run All Scripts Complete**\n\n"
             f"▶️ Started: {started}\n"
             f"⏭️ Skipped: {skipped}",
+            parse_mode='Markdown'
+        )
+    
+    def _backup_all_files(self, chat_id):
+        """Backup all files"""
+        users = self._get_all_users()
+        backed_up = 0
+        
+        for user in users:
+            files = self._get_user_files(user['user_id'])
+            for file_data in files:
+                file_path = os.path.join(
+                    self._get_user_folder(user['user_id']),
+                    file_data['file_name']
+                )
+                if os.path.exists(file_path):
+                    self.backup_manager.create_backup(
+                        user['user_id'],
+                        file_data['file_name'],
+                        file_path
+                    )
+                    backed_up += 1
+        
+        self.bot.send_message(
+            chat_id,
+            f"💾 **Backup Complete**\n\n"
+            f"✅ Backed up: {backed_up} files",
+            parse_mode='Markdown'
+        )
+    
+    def _restore_all_files(self, chat_id):
+        """Restore all files from backup"""
+        users = self._get_all_users()
+        restored = 0
+        
+        for user in users:
+            backups = self.backup_manager.list_backups(user['user_id'])
+            for backup in backups:
+                file_path = os.path.join(
+                    self._get_user_folder(user['user_id']),
+                    backup['file_name']
+                )
+                if self.backup_manager.restore_backup(backup['backup_id'], file_path):
+                    restored += 1
+        
+        self.bot.send_message(
+            chat_id,
+            f"📥 **Restore Complete**\n\n"
+            f"✅ Restored: {restored} files",
             parse_mode='Markdown'
         )
     
@@ -2318,31 +2479,171 @@ class AdvancedBot:
                     except Exception:
                         pass
     
-    def _get_system_status(self) -> str:
-        """Get system status"""
-        cpu = psutil.cpu_percent()
-        memory = psutil.virtual_memory()
-        disk = psutil.disk_usage('/')
+    def _export_user_data(self, user_id, chat_id):
+        """Export user data"""
+        try:
+            user_data = self._get_user_data(user_id)
+            files = self._get_user_files(user_id)
+            subscription = self._get_user_subscription(user_id)
+            
+            export_data = {
+                'user': dict(user_data),
+                'files': files,
+                'subscription': dict(subscription) if subscription else None,
+                'exported_at': datetime.now().isoformat()
+            }
+            
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                json.dump(export_data, f, indent=2, default=str)
+                temp_path = f.name
+            
+            with open(temp_path, 'rb') as f:
+                self.bot.send_document(
+                    chat_id,
+                    f,
+                    caption=f"📋 **Your Data Export**\n\nExported: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+                )
+            
+            os.unlink(temp_path)
+            
+        except Exception as e:
+            logging.error(f"Export error: {e}")
+            self.bot.send_message(
+                chat_id,
+                f"❌ **Export Failed**\n\nError: {str(e)}",
+                parse_mode='Markdown'
+            )
+    
+    # ============================================================
+    # MENU CREATION FUNCTIONS
+    # ============================================================
+    
+    def _create_main_menu(self, user_id):
+        """Create main menu markup"""
+        markup = types.InlineKeyboardMarkup(row_width=2)
         
-        running = len(self.process_manager._processes)
-        total_users = len(self._get_all_users())
-        
-        return (
-            f"🖥️ **System Status**\n\n"
-            f"🧠 **CPU:** {cpu}%\n"
-            f"💾 **Memory:** {memory.percent}% ({memory.used // 1024**3}GB / {memory.total // 1024**3}GB)\n"
-            f"💿 **Disk:** {disk.percent}% ({disk.used // 1024**3}GB / {disk.total // 1024**3}GB)\n"
-            f"🟢 **Running Bots:** {running}\n"
-            f"👥 **Total Users:** {total_users}\n"
-            f"🔒 **Bot Status:** {'🔴 Locked' if self.bot_locked else '🟢 Unlocked'}"
+        markup.add(
+            types.InlineKeyboardButton("📤 Upload", callback_data='upload'),
+            types.InlineKeyboardButton("📂 My Files", callback_data='files')
         )
+        
+        markup.add(
+            types.InlineKeyboardButton("📊 Stats", callback_data='stats'),
+            types.InlineKeyboardButton("⚡ Speed", callback_data='speed')
+        )
+        
+        markup.add(
+            types.InlineKeyboardButton("👤 Profile", callback_data='profile'),
+            types.InlineKeyboardButton("⚙️ Settings", callback_data='settings')
+        )
+        
+        markup.add(
+            types.InlineKeyboardButton("💾 Backup", callback_data='backup_all'),
+            types.InlineKeyboardButton("🆘 Help", callback_data='help')
+        )
+        
+        if user_id in self.admin_ids:
+            markup.add(
+                types.InlineKeyboardButton("👑 Admin Panel", callback_data='admin_panel')
+            )
+        
+        return markup
+    
+    def _create_file_menu(self, files):
+        """Create file management menu"""
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        
+        for file in files[:10]:
+            status = "🟢" if file.get('is_running', False) else "🔴"
+            markup.add(
+                types.InlineKeyboardButton(
+                    f"{status} {file['file_name']}",
+                    callback_data=f"file_{file['id']}"
+                )
+            )
+        
+        if len(files) > 10:
+            markup.add(
+                types.InlineKeyboardButton(
+                    f"📄 View All ({len(files)} files)",
+                    callback_data="view_all_files"
+                )
+            )
+        
+        markup.add(types.InlineKeyboardButton("🔙 Back", callback_data='main'))
+        return markup
+    
+    def _create_file_controls(self, file_data):
+        """Create file control menu"""
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        
+        is_running = file_data.get('is_running', False)
+        
+        if is_running:
+            markup.add(
+                types.InlineKeyboardButton("⏹️ Stop", callback_data=f"stop_{file_data['id']}"),
+                types.InlineKeyboardButton("🔄 Restart", callback_data=f"restart_{file_data['id']}")
+            )
+        else:
+            markup.add(
+                types.InlineKeyboardButton("▶️ Start", callback_data=f"start_{file_data['id']}")
+            )
+        
+        markup.add(
+            types.InlineKeyboardButton("📜 Logs", callback_data=f"logs_{file_data['id']}"),
+            types.InlineKeyboardButton("📥 Download", callback_data=f"download_{file_data['id']}")
+        )
+        
+        markup.add(
+            types.InlineKeyboardButton("💾 Backup", callback_data=f"backup_{file_data['id']}"),
+            types.InlineKeyboardButton("📊 Resources", callback_data=f"resources_{file_data['id']}")
+        )
+        
+        markup.add(
+            types.InlineKeyboardButton("🗑️ Delete", callback_data=f"delete_{file_data['id']}")
+        )
+        
+        markup.add(types.InlineKeyboardButton("🔙 Back to Files", callback_data='files'))
+        return markup
+    
+    def _create_admin_menu(self):
+        """Create admin menu"""
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        
+        markup.add(
+            types.InlineKeyboardButton("📊 Stats", callback_data='admin_stats'),
+            types.InlineKeyboardButton("👥 Users", callback_data='admin_users')
+        )
+        
+        markup.add(
+            types.InlineKeyboardButton("🚫 Banned", callback_data='admin_banned'),
+            types.InlineKeyboardButton("🔒 Lock/Unlock", callback_data='admin_lock')
+        )
+        
+        markup.add(
+            types.InlineKeyboardButton("📢 Broadcast", callback_data='admin_broadcast'),
+            types.InlineKeyboardButton("🧹 Cleanup", callback_data='admin_cleanup')
+        )
+        
+        markup.add(
+            types.InlineKeyboardButton("🔄 Run All", callback_data='admin_run_all'),
+            types.InlineKeyboardButton("💾 Backup All", callback_data='admin_backup_all')
+        )
+        
+        markup.add(
+            types.InlineKeyboardButton("📥 Restore All", callback_data='admin_restore_all'),
+            types.InlineKeyboardButton("📋 Export Data", callback_data='admin_export_data')
+        )
+        
+        markup.add(types.InlineKeyboardButton("🔙 Back", callback_data='main'))
+        return markup
     
     # ============================================================
-    # DATABASE HELPERS
+    # DATABASE FUNCTIONS
     # ============================================================
     
-    def _register_user(self, user: telebot.types.User):
-        """Register a user in the database"""
+    def _register_user(self, user):
+        """Register user in database"""
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -2350,40 +2651,36 @@ class AdvancedBot:
                 VALUES (?, ?, ?, ?)
             ''', (user.id, user.username, user.first_name, user.last_name))
             
-            # Update last_active
             cursor.execute('''
                 UPDATE users SET last_active = CURRENT_TIMESTAMP
                 WHERE user_id = ?
             ''', (user.id,))
             
-            # Add to active users
             cursor.execute('''
                 INSERT OR REPLACE INTO active_users (user_id, last_seen)
                 VALUES (?, CURRENT_TIMESTAMP)
             ''', (user.id,))
-            
             conn.commit()
     
-    def _get_user_data(self, user_id: int) -> dict:
-        """Get user data from database"""
+    def _get_user_data(self, user_id):
+        """Get user data"""
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
             row = cursor.fetchone()
             return dict(row) if row else {}
     
-    def _get_user_files(self, user_id: int) -> List[dict]:
-        """Get user's files from database"""
+    def _get_user_files(self, user_id):
+        """Get user's files"""
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT * FROM user_files 
-                WHERE user_id = ? 
+                SELECT * FROM user_files WHERE user_id = ?
                 ORDER BY upload_time DESC
             ''', (user_id,))
             return [dict(row) for row in cursor.fetchall()]
     
-    def _get_file_by_id(self, file_id: int) -> Optional[dict]:
+    def _get_file_by_id(self, file_id):
         """Get file by ID"""
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
@@ -2391,8 +2688,8 @@ class AdvancedBot:
             row = cursor.fetchone()
             return dict(row) if row else None
     
-    def _save_file_record(self, user_id: int, file_name: str, file_type: str, file_size: int) -> int:
-        """Save file record to database"""
+    def _save_file_record(self, user_id, file_name, file_type, file_size):
+        """Save file record"""
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -2402,8 +2699,8 @@ class AdvancedBot:
             conn.commit()
             return cursor.lastrowid
     
-    def _update_file_status(self, user_id: int, file_name: str, is_running: bool, pid: int = None):
-        """Update file running status"""
+    def _update_file_status(self, user_id, file_name, is_running, pid=None):
+        """Update file status"""
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
             if is_running:
@@ -2420,42 +2717,28 @@ class AdvancedBot:
                 ''', (user_id, file_name))
             conn.commit()
     
-    def _delete_file_record(self, file_id: int):
-        """Delete file record from database"""
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('DELETE FROM user_files WHERE id = ?', (file_id,))
-            conn.commit()
-    
-    def _get_user_file_count(self, user_id: int) -> int:
+    def _get_user_file_count(self, user_id):
         """Get user's file count"""
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT COUNT(*) FROM user_files WHERE user_id = ?', (user_id,))
             return cursor.fetchone()[0] or 0
     
-    def _get_all_users(self) -> List[dict]:
+    def _get_all_users(self):
         """Get all users"""
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT * FROM users ORDER BY created_at DESC')
             return [dict(row) for row in cursor.fetchall()]
     
-    def _get_all_subscriptions(self) -> List[dict]:
-        """Get all subscriptions"""
+    def _get_total_files(self):
+        """Get total files count"""
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT * FROM subscriptions')
-            return [dict(row) for row in cursor.fetchall()]
+            cursor.execute('SELECT COUNT(*) FROM user_files')
+            return cursor.fetchone()[0] or 0
     
-    def _get_banned_users(self) -> List[dict]:
-        """Get banned users"""
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT user_id, ban_reason FROM users WHERE is_banned = 1')
-            return [dict(row) for row in cursor.fetchall()]
-    
-    def _get_user_subscription(self, user_id: int) -> Optional[dict]:
+    def _get_user_subscription(self, user_id):
         """Get user's subscription"""
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
@@ -2463,48 +2746,107 @@ class AdvancedBot:
             row = cursor.fetchone()
             return dict(row) if row else None
     
-    def _get_user_limit(self, user_id: int) -> float:
+    def _get_user_limit(self, user_id):
         """Get user's file limit"""
         if user_id == config.OWNER_ID:
             return config.OWNER_LIMIT
-        if user_id == config.ADMIN_ID:
+        if user_id in self.admin_ids:
             return config.ADMIN_LIMIT
         
         subscription = self._get_user_subscription(user_id)
         if subscription:
             expiry = subscription.get('expiry')
-            if expiry and isinstance(expiry, str):
-                try:
-                    expiry = datetime.fromisoformat(expiry)
-                except:
-                    expiry = None
-            if expiry and expiry > datetime.now():
-                return config.SUBSCRIBED_USER_LIMIT
+            if expiry:
+                if isinstance(expiry, str):
+                    try:
+                        expiry = datetime.fromisoformat(expiry)
+                    except:
+                        expiry = None
+                if expiry and expiry > datetime.now():
+                    return config.SUBSCRIBED_USER_LIMIT
         
         return config.FREE_USER_LIMIT
+    
+    def _get_banned_users(self):
+        """Get banned users"""
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT user_id, ban_reason FROM users WHERE is_banned = 1')
+            return [dict(row) for row in cursor.fetchall()]
+    
+    def _get_storage_used(self):
+        """Get total storage used"""
+        storage_used = 0
+        user_folders = [f for f in os.listdir('upload_bots') 
+                       if os.path.isdir(os.path.join('upload_bots', f))]
+        for folder in user_folders:
+            folder_path = os.path.join('upload_bots', folder)
+            for root, dirs, files in os.walk(folder_path):
+                for file in files:
+                    try:
+                        storage_used += os.path.getsize(os.path.join(root, file))
+                    except Exception:
+                        pass
+        return storage_used
+    
+    # ============================================================
+    # BAN FUNCTIONS
+    # ============================================================
+    
+    def _is_user_banned(self, user_id):
+        """Check if user is banned"""
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT is_banned FROM users WHERE user_id = ?', (user_id,))
+            row = cursor.fetchone()
+            return row and row[0] == 1
+    
+    def _ban_user(self, user_id, reason):
+        """Ban a user"""
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE users SET is_banned = 1, ban_reason = ?
+                WHERE user_id = ?
+            ''', (reason, user_id))
+            conn.commit()
+        
+        self.banned_users.add(user_id)
+    
+    def _unban_user(self, user_id):
+        """Unban a user"""
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE users SET is_banned = 0, ban_reason = NULL
+                WHERE user_id = ?
+            ''', (user_id,))
+            conn.commit()
+        
+        self.banned_users.discard(user_id)
     
     # ============================================================
     # UTILITY FUNCTIONS
     # ============================================================
     
-    def _get_user_folder(self, user_id: int) -> str:
-        """Get user's folder path"""
+    def _get_user_folder(self, user_id):
+        """Get user folder"""
         folder = os.path.join('upload_bots', str(user_id))
         os.makedirs(folder, exist_ok=True)
         return folder
     
-    def _check_force_join(self, user_id: int) -> bool:
-        """Check if user has joined all required channels"""
+    def _check_force_join(self, user_id):
+        """Check force join"""
         try:
             for channel in config.FORCE_JOIN_CHANNELS:
                 member = self.bot.get_chat_member(channel, user_id)
                 if member.status not in ['member', 'administrator', 'creator']:
                     return False
             return True
-        except Exception:
+        except:
             return False
     
-    def _send_force_join_message(self, chat_id: int):
+    def _send_force_join_message(self, chat_id):
         """Send force join message"""
         markup = types.InlineKeyboardMarkup(row_width=1)
         for channel, name in config.FORCE_JOIN_CHANNELS.items():
@@ -2514,159 +2856,16 @@ class AdvancedBot:
                     url=f"https://t.me/{channel.replace('@', '')}"
                 )
             )
-        markup.add(
-            types.InlineKeyboardButton(
-                "✅ I've Joined All",
-                callback_data="check_join"
-            )
-        )
+        markup.add(types.InlineKeyboardButton("✅ I've Joined", callback_data="check_join"))
         
         self.bot.send_message(
             chat_id,
-            "📢 **Join Our Channels**\n\n"
-            "Please join all channels to use this bot:",
+            "📢 **Join Our Channels**\n\nPlease join all channels to use this bot:",
             reply_markup=markup,
             parse_mode='Markdown'
         )
     
-    def _is_user_banned(self, user_id: int) -> bool:
-        """Check if user is banned"""
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT is_banned FROM users WHERE user_id = ?', (user_id,))
-            row = cursor.fetchone()
-            return row and row[0] == 1
-    
-    def _scan_file(self, file_content: bytes, file_name: str, user_id: int) -> dict:
-        """Scan file for malware"""
-        # Owner bypass
-        if user_id == config.OWNER_ID:
-            return {'safe': True, 'reason': 'Owner bypass'}
-        
-        # Check for executable signatures
-        executable_signatures = [
-            b'MZ',  # Windows PE
-            b'\x7fELF',  # Linux ELF
-            b'\xfe\xed\xfa',  # Mach-O
-            b'\xce\xfa\xed\xfe',  # Mach-O reverse
-        ]
-        
-        for sig in executable_signatures:
-            if file_content.startswith(sig):
-                return {'safe': False, 'reason': f'Executable signature detected: {sig.hex()}'}
-        
-        # Check for suspicious keywords in first 4KB
-        try:
-            sample = file_content[:4096].decode('utf-8', errors='ignore')
-            suspicious_keywords = [
-                'ransomware', 'trojan', 'virus', 'malware',
-                'backdoor', 'exploit', 'payload', 'botnet',
-                'keylogger', 'rootkit', 'rm -rf', 'os.remove',
-                'shutil.rmtree', 'subprocess.call', 'eval(', 'exec('
-            ]
-            for keyword in suspicious_keywords:
-                if keyword in sample.lower():
-                    return {'safe': False, 'reason': f'Suspicious keyword: {keyword}'}
-        except Exception:
-            pass
-        
-        # Check file extensions
-        suspicious_extensions = ['.exe', '.dll', '.bat', '.cmd', '.scr', '.com']
-        if any(file_name.lower().endswith(ext) for ext in suspicious_extensions):
-            return {'safe': False, 'reason': 'Suspicious file extension'}
-        
-        return {'safe': True, 'reason': 'File appears safe'}
-    
-    def _get_system_stats(self, user_id: int) -> dict:
-        """Get system statistics"""
-        total_users = len(self._get_all_users())
-        user_files = self._get_user_files(user_id)
-        user_running = sum(1 for f in user_files if f.get('is_running', False))
-        
-        total_files = 0
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT COUNT(*) FROM user_files')
-            total_files = cursor.fetchone()[0] or 0
-        
-        running_bots = len(self.process_manager._processes)
-        
-        # Storage
-        storage_used = 0
-        user_folder = self._get_user_folder(user_id)
-        if os.path.exists(user_folder):
-            for root, dirs, files in os.walk(user_folder):
-                for file in files:
-                    try:
-                        storage_used += os.path.getsize(os.path.join(root, file))
-                    except Exception:
-                        pass
-        
-        # System resources
-        cpu = psutil.cpu_percent()
-        memory = psutil.virtual_memory()
-        
-        return {
-            'total_users': total_users,
-            'total_files': total_files,
-            'running_bots': running_bots,
-            'storage_used': self._format_size(storage_used),
-            'cpu_usage': round(cpu, 1),
-            'memory_usage': round(memory.percent, 1),
-            'user_files': len(user_files),
-            'user_uploads': len(user_files),
-            'user_running': user_running,
-        }
-    
-    def _get_analytics(self) -> dict:
-        """Get analytics data"""
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            # Total users
-            cursor.execute('SELECT COUNT(*) FROM users')
-            total_users = cursor.fetchone()[0] or 0
-            
-            # Total files
-            cursor.execute('SELECT COUNT(*) FROM user_files')
-            total_files = cursor.fetchone()[0] or 0
-            
-            # Running bots
-            running_bots = len(self.process_manager._processes)
-            
-            # Total uploads (using file records)
-            total_uploads = total_files
-            
-            # Active today
-            cursor.execute('''
-                SELECT COUNT(*) FROM active_users 
-                WHERE date(last_seen) = date('now')
-            ''')
-            active_today = cursor.fetchone()[0] or 0
-            
-            # Storage
-            storage_used = 0
-            user_folders = [f for f in os.listdir('upload_bots') 
-                          if os.path.isdir(os.path.join('upload_bots', f))]
-            for folder in user_folders:
-                folder_path = os.path.join('upload_bots', folder)
-                for root, dirs, files in os.walk(folder_path):
-                    for file in files:
-                        try:
-                            storage_used += os.path.getsize(os.path.join(root, file))
-                        except Exception:
-                            pass
-            
-            return {
-                'total_users': total_users,
-                'total_files': total_files,
-                'running_bots': running_bots,
-                'total_uploads': total_uploads,
-                'storage_used': self._format_size(storage_used),
-                'active_today': active_today,
-            }
-    
-    def _format_size(self, size: int) -> str:
+    def _format_size(self, size):
         """Format size in bytes to human readable"""
         for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
             if size < 1024:
@@ -2674,7 +2873,7 @@ class AdvancedBot:
             size /= 1024
         return f"{size:.1f} TB"
     
-    def _format_uptime(self, start_time) -> str:
+    def _format_uptime(self, start_time):
         """Format uptime"""
         if not start_time:
             return "Unknown"
@@ -2683,325 +2882,21 @@ class AdvancedBot:
                 start_time = datetime.fromisoformat(start_time)
             except:
                 return "Unknown"
-        
-        delta = datetime.now() - start_time
-        hours = delta.seconds // 3600
-        minutes = (delta.seconds % 3600) // 60
-        seconds = delta.seconds % 60
-        
-        if delta.days > 0:
-            return f"{delta.days}d {hours}h {minutes}m"
-        elif hours > 0:
-            return f"{hours}h {minutes}m {seconds}s"
-        elif minutes > 0:
-            return f"{minutes}m {seconds}s"
-        else:
-            return f"{seconds}s"
-    
-    def _get_welcome_text(self, user_data: dict) -> str:
-        """Get welcome text"""
-        user_id = user_data.get('user_id', 'Unknown')
-        first_name = user_data.get('first_name', 'User')
-        username = user_data.get('username', 'Not set')
-        
-        # Get file count and limit
-        file_count = self._get_user_file_count(user_id)
-        file_limit = self._get_user_limit(user_id)
-        
-        # Check subscription
-        subscription = self._get_user_subscription(user_id)
-        is_premium = False
-        days_left = 0
-        
-        if subscription:
-            expiry = subscription.get('expiry')
-            if expiry and isinstance(expiry, str):
-                try:
-                    expiry = datetime.fromisoformat(expiry)
-                    if expiry > datetime.now():
-                        is_premium = True
-                        days_left = (expiry - datetime.now()).days
-                except:
-                    pass
-        
-        status = "🆓 Free"
-        if user_id == config.OWNER_ID:
-            status = "👑 Owner"
-        elif user_id == config.ADMIN_ID:
-            status = "🛡️ Admin"
-        elif is_premium:
-            status = f"💎 Premium ({days_left}d left)"
-        
-        return (
-            f"🚀 **Welcome to Bot Hosting Platform!**\n\n"
-            f"👤 **User:** {first_name}\n"
-            f"✳️ **Username:** @{username}\n"
-            f"🆔 **ID:** `{user_id}`\n"
-            f"🔰 **Status:** {status}\n"
-            f"📂 **Files:** {file_count}/{file_limit}\n\n"
-            f"🤖 **Host and run Python or JavaScript bots**\n"
-            f"📤 Upload your scripts or ZIP archives\n"
-            f"⚡ Get started by uploading your first file!\n\n"
-            f"👇 **Use the buttons below:**"
-        )
-    
-    # ============================================================
-    # FLASK DASHBOARD
-    # ============================================================
-    
-    def _setup_flask(self):
-        """Setup Flask web dashboard"""
-        app = Flask('bot_dashboard')
-        
-        @app.route('/')
-        def dashboard():
-            return self._render_dashboard()
-        
-        @app.route('/api/stats')
-        def api_stats():
-            return jsonify(self._get_analytics())
-        
-        @app.route('/api/processes')
-        def api_processes():
-            processes = []
-            for key, info in self.process_manager._processes.items():
-                processes.append({
-                    'key': key,
-                    'pid': info.get('pid'),
-                    'status': info.get('status'),
-                    'start_time': info.get('start_time', '').isoformat() if info.get('start_time') else None,
-                    'cpu': info.get('cpu_percent', 0),
-                    'memory': info.get('memory_mb', 0),
-                })
-            return jsonify(processes)
-        
-        self._flask_app = app
-        
-        # Start Flask in a thread
-        thread = Thread(target=self._run_flask, daemon=True)
-        thread.start()
-        logging.info("Web dashboard started on port 8080")
-    
-    def _run_flask(self):
-        """Run Flask server"""
-        try:
-            self._flask_app.run(
-                host=config.WEB_HOST,
-                port=config.WEB_PORT,
-                debug=False,
-                use_reloader=False
-            )
-        except Exception as e:
-            logging.error(f"Flask error: {e}")
-    
-    def _render_dashboard(self) -> str:
-        """Render dashboard HTML"""
-        stats = self._get_analytics()
-        
-        html = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Bot Hosting Dashboard</title>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                * { margin: 0; padding: 0; box-sizing: border-box; }
-                body { 
-                    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-                    background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
-                    min-height: 100vh;
-                    color: #fff;
-                    padding: 20px;
-                }
-                .container {
-                    max-width: 1200px;
-                    margin: 0 auto;
-                }
-                .header {
-                    text-align: center;
-                    padding: 40px 0;
-                }
-                .header h1 {
-                    font-size: 2.5em;
-                    background: linear-gradient(135deg, #f093fb, #f5576c);
-                    -webkit-background-clip: text;
-                    -webkit-text-fill-color: transparent;
-                }
-                .header p {
-                    color: #a8b2d1;
-                    margin-top: 10px;
-                }
-                .stats-grid {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                    gap: 20px;
-                    margin: 30px 0;
-                }
-                .stat-card {
-                    background: rgba(255,255,255,0.05);
-                    backdrop-filter: blur(10px);
-                    border-radius: 16px;
-                    padding: 25px;
-                    text-align: center;
-                    border: 1px solid rgba(255,255,255,0.1);
-                    transition: transform 0.3s;
-                }
-                .stat-card:hover {
-                    transform: translateY(-5px);
-                }
-                .stat-card .icon {
-                    font-size: 2em;
-                    margin-bottom: 10px;
-                }
-                .stat-card .value {
-                    font-size: 2em;
-                    font-weight: bold;
-                    background: linear-gradient(135deg, #f093fb, #f5576c);
-                    -webkit-background-clip: text;
-                    -webkit-text-fill-color: transparent;
-                }
-                .stat-card .label {
-                    color: #a8b2d1;
-                    margin-top: 5px;
-                }
-                .status-section {
-                    background: rgba(255,255,255,0.05);
-                    border-radius: 16px;
-                    padding: 25px;
-                    margin-top: 30px;
-                    border: 1px solid rgba(255,255,255,0.1);
-                }
-                .status-section h2 {
-                    margin-bottom: 20px;
-                    font-size: 1.5em;
-                }
-                .status-item {
-                    display: flex;
-                    justify-content: space-between;
-                    padding: 12px 0;
-                    border-bottom: 1px solid rgba(255,255,255,0.05);
-                }
-                .status-item:last-child {
-                    border-bottom: none;
-                }
-                .status-item .label {
-                    color: #a8b2d1;
-                }
-                .badge {
-                    display: inline-block;
-                    padding: 4px 12px;
-                    border-radius: 20px;
-                    font-size: 0.85em;
-                }
-                .badge-success { background: #10b981; color: #fff; }
-                .badge-danger { background: #ef4444; color: #fff; }
-                .badge-warning { background: #f59e0b; color: #fff; }
-                .badge-info { background: #3b82f6; color: #fff; }
-                .footer {
-                    text-align: center;
-                    margin-top: 40px;
-                    color: #a8b2d1;
-                    font-size: 0.9em;
-                }
-                @media (max-width: 768px) {
-                    .stats-grid {
-                        grid-template-columns: repeat(2, 1fr);
-                    }
-                    .header h1 {
-                        font-size: 1.8em;
-                    }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>🤖 Bot Hosting Platform</h1>
-                    <p>Real-time dashboard for your bot hosting service</p>
-                </div>
-                
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="icon">👥</div>
-                        <div class="value">{total_users}</div>
-                        <div class="label">Total Users</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="icon">📂</div>
-                        <div class="value">{total_files}</div>
-                        <div class="label">Total Files</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="icon">🟢</div>
-                        <div class="value">{running_bots}</div>
-                        <div class="label">Running Bots</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="icon">💾</div>
-                        <div class="value">{storage_used}</div>
-                        <div class="label">Storage Used</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="icon">📤</div>
-                        <div class="value">{total_uploads}</div>
-                        <div class="label">Total Uploads</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="icon">📅</div>
-                        <div class="value">{active_today}</div>
-                        <div class="label">Active Today</div>
-                    </div>
-                </div>
-                
-                <div class="status-section">
-                    <h2>🔧 System Status</h2>
-                    <div id="status-items">
-                        <div class="status-item">
-                            <span class="label">Bot Status</span>
-                            <span class="badge badge-success">🟢 Online</span>
-                        </div>
-                        <div class="status-item">
-                            <span class="label">Python Version</span>
-                            <span>""" + sys.version.split()[0] + """</span>
-                        </div>
-                        <div class="status-item">
-                            <span class="label">Platform</span>
-                            <span>""" + platform.system() + """</span>
-                        </div>
-                        <div class="status-item">
-                            <span class="label">Total Processes</span>
-                            <span>""" + str(len(self.process_manager._processes)) + """</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="footer">
-                    <p>© 2024 Bot Hosting Platform | Powered by Python</p>
-                </div>
-            </div>
+        if isinstance(start_time, datetime):
+            delta = datetime.now() - start_time
+            hours = delta.seconds // 3600
+            minutes = (delta.seconds % 3600) // 60
+            seconds = delta.seconds % 60
             
-            <script>
-                // Auto-refresh every 30 seconds
-                setInterval(() => {
-                    fetch('/api/stats')
-                        .then(r => r.json())
-                        .then(data => {
-                            // Update values
-                            const values = document.querySelectorAll('.value');
-                            const keys = ['total_users', 'total_files', 'running_bots', 'storage_used', 'total_uploads', 'active_today'];
-                            keys.forEach((key, i) => {
-                                if (values[i]) values[i].textContent = data[key] || 0;
-                            });
-                        })
-                        .catch(err => console.error('Stats update error:', err));
-                }, 30000);
-            </script>
-        </body>
-        </html>
-        """.format(**stats)
-        
-        return html
+            if delta.days > 0:
+                return f"{delta.days}d {hours}h {minutes}m"
+            elif hours > 0:
+                return f"{hours}h {minutes}m {seconds}s"
+            elif minutes > 0:
+                return f"{minutes}m {seconds}s"
+            else:
+                return f"{seconds}s"
+        return "Unknown"
     
     # ============================================================
     # CLEANUP
@@ -3018,7 +2913,7 @@ class AdvancedBot:
                 except Exception as e:
                     logging.error(f"Cleanup loop error: {e}")
         
-        thread = Thread(target=cleanup_loop, daemon=True)
+        thread = threading.Thread(target=cleanup_loop, daemon=True)
         thread.start()
         logging.info("Auto-cleanup scheduled")
 
@@ -3027,41 +2922,26 @@ class AdvancedBot:
 # ============================================================
 
 if __name__ == '__main__':
-    # Setup logging
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
             logging.StreamHandler(),
             logging.FileHandler('bot.log', encoding='utf-8')
         ]
     )
     
-    # Create bot
-    bot = AdvancedBot()
+    print("=" * 50)
+    print("🤖 Advanced Bot Starting...")
+    print(f"👑 Owner ID: {config.OWNER_ID}")
+    print(f"🛡️ Admin ID: {config.ADMIN_ID}")
+    print("=" * 50)
     
-    # Start polling
-    logging.info("=" * 50)
-    logging.info("🚀 Advanced Bot Starting...")
-    logging.info(f"📦 Version: 3.0.0")
-    logging.info(f"👑 Owner ID: {config.OWNER_ID}")
-    logging.info(f"🛡️ Admin ID: {config.ADMIN_ID}")
-    logging.info(f"📁 Base Directory: {os.path.abspath(os.path.dirname(__file__))}")
-    logging.info("=" * 50)
+    bot = AdvancedBot()
     
     while True:
         try:
-            bot.bot.infinity_polling(
-                logger_level=logging.INFO,
-                timeout=60,
-                long_polling_timeout=30
-            )
-        except requests.exceptions.ReadTimeout:
-            logging.warning("Polling timeout, retrying...")
-            time.sleep(5)
-        except requests.exceptions.ConnectionError as e:
-            logging.error(f"Connection error: {e}")
-            time.sleep(15)
+            bot.bot.infinity_polling(timeout=60, long_polling_timeout=30)
         except Exception as e:
-            logging.critical(f"Critical error: {e}", exc_info=True)
-            time.sleep(30)
+            logging.error(f"Polling error: {e}")
+            time.sleep(5)
