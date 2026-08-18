@@ -56,7 +56,7 @@ def keep_alive():
 TOKEN = '8762789304:AAG4ROCZMDDRqYvx2KbvOGZ-lNLjmwMQTIE' #bot token dalo yeha
 OWNER_ID = 8909378644  #yha tumhra chat id dalo
 ADMIN_ID = 8909378644 #yeha koi admin ya tumhara chat id dalo
-YOUR_USERNAME = '@anbu_shisui18 #yeha tumhra username dala
+YOUR_USERNAME = '@anbu_shisui18' #yeha tumhra username dala
 UPDATE_CHANNEL = 'https://t.me/botscripts18' #yeha chnl link dalo''
 FORCE_JOIN_CHANNELS = {
     "@botscripts18": "💎 𝐎ғғɪᴄɪᴀʟ 𝐂ʜᴀɴɴᴇʟ",
