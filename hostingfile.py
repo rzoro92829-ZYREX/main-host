@@ -54,15 +54,15 @@ def keep_alive():
 
 # --- Configuration ---
 TOKEN = '8762789304:AAG4ROCZMDDRqYvx2KbvOGZ-lNLjmwMQTIE' #bot token dalo yeha
-OWNER_ID = 8909378644  #yha tumhra chat id dalo
+OWNER_ID = 8909378644 #yha tumhra chat id dalo
 ADMIN_ID = 8909378644 #yeha koi admin ya tumhara chat id dalo
 YOUR_USERNAME = '@anbu_shisui18' #yeha tumhra username dala
 UPDATE_CHANNEL = 'https://t.me/botscripts18' #yeha chnl link dalo''
 FORCE_JOIN_CHANNELS = {
     "@botscripts18": "💎 𝐎ғғɪᴄɪᴀʟ 𝐂ʜᴀɴɴᴇʟ",
-    
-    
-    
+    "@TheNextLevelOfficial": "💎 PARTNER'S CHANNEL",
+    "@trusted_censored": "💎 FRIENDS CHANNEL",
+    "@botscriptsbackupl": "💎 back up channel",
 
 }
 
@@ -97,6 +97,13 @@ file_db = {}
 # 👉 YAHAN ADD KARO
 banned_users = set()
 banned_usernames = set()
+
+# --- FILE APPROVAL SYSTEM ---
+# Dictionary to store pending files for approval
+# Structure: {file_id: {'user_id': user_id, 'file_name': file_name, 'file_path': file_path, 
+#                       'file_type': file_type, 'timestamp': datetime, 'message_id': message_id}}
+pending_files = {}
+pending_file_counter = 0
 
 # --- Malware Detection Configuration ---
 MALWARE_SIGNATURES = [
@@ -150,7 +157,8 @@ ADMIN_COMMAND_BUTTONS_LAYOUT_USER_SPEC = [
     ["💳 Subscriptions", "📢 Broadcast"],
     ["🔒 Lock Bot", "🟢 Running All Code"],
     ["📤 Send Command", "👑 Admin Panel"],  # Added Send Command
-    ["📞 Contact Owner"]
+    ["📞 Contact Owner"],
+    ["📥 Pending Approvals"]  # Added for approval system
 ]
 
 def send_force_join_msg(chat_id):
@@ -214,6 +222,16 @@ def init_db():
                      (user_id INTEGER PRIMARY KEY)''')
         c.execute('''CREATE TABLE IF NOT EXISTS admins
                      (user_id INTEGER PRIMARY KEY)''')
+        # Add pending files table for approval system
+        c.execute('''CREATE TABLE IF NOT EXISTS pending_files
+                     (file_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      user_id INTEGER,
+                      file_name TEXT,
+                      file_path TEXT,
+                      file_type TEXT,
+                      timestamp TEXT,
+                      message_id INTEGER,
+                      status TEXT DEFAULT 'pending')''')
         c.execute('INSERT OR IGNORE INTO admins (user_id) VALUES (?)', (OWNER_ID,))
         if ADMIN_ID != OWNER_ID:
             c.execute('INSERT OR IGNORE INTO admins (user_id) VALUES (?)', (ADMIN_ID,))
@@ -1553,6 +1571,135 @@ def remove_admin_db(admin_id):
         finally: conn.close()
 # --- End Database Operations ---
 
+# --- FILE APPROVAL SYSTEM FUNCTIONS ---
+
+def save_pending_file_to_db(user_id, file_name, file_path, file_type, message_id):
+    """Save pending file to database"""
+    with DB_LOCK:
+        conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
+        c = conn.cursor()
+        try:
+            timestamp = datetime.now().isoformat()
+            c.execute('''INSERT INTO pending_files (user_id, file_name, file_path, file_type, timestamp, message_id, status)
+                         VALUES (?, ?, ?, ?, ?, ?, 'pending')''',
+                      (user_id, file_name, file_path, file_type, timestamp, message_id))
+            conn.commit()
+            file_id = c.lastrowid
+            logger.info(f"Saved pending file {file_name} (ID: {file_id}) for user {user_id}")
+            return file_id
+        except sqlite3.Error as e:
+            logger.error(f"❌ SQLite error saving pending file: {e}")
+            return None
+        finally:
+            conn.close()
+
+def load_pending_files_from_db():
+    """Load pending files from database into memory"""
+    global pending_files
+    with DB_LOCK:
+        conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
+        c = conn.cursor()
+        try:
+            c.execute('''SELECT file_id, user_id, file_name, file_path, file_type, timestamp, message_id 
+                         FROM pending_files WHERE status = 'pending' ORDER BY timestamp''')
+            rows = c.fetchall()
+            pending_files = {}
+            for row in rows:
+                file_id, user_id, file_name, file_path, file_type, timestamp_str, message_id = row
+                pending_files[file_id] = {
+                    'user_id': user_id,
+                    'file_name': file_name,
+                    'file_path': file_path,
+                    'file_type': file_type,
+                    'timestamp': datetime.fromisoformat(timestamp_str) if timestamp_str else datetime.now(),
+                    'message_id': message_id
+                }
+            logger.info(f"Loaded {len(pending_files)} pending files from database")
+            return pending_files
+        except sqlite3.Error as e:
+            logger.error(f"❌ SQLite error loading pending files: {e}")
+            return {}
+        finally:
+            conn.close()
+
+def update_pending_file_status(file_id, status):
+    """Update status of a pending file (approved/rejected)"""
+    with DB_LOCK:
+        conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
+        c = conn.cursor()
+        try:
+            c.execute('UPDATE pending_files SET status = ? WHERE file_id = ?', (status, file_id))
+            conn.commit()
+            logger.info(f"Updated pending file {file_id} status to {status}")
+            return True
+        except sqlite3.Error as e:
+            logger.error(f"❌ SQLite error updating pending file status: {e}")
+            return False
+        finally:
+            conn.close()
+
+def get_pending_files_count():
+    """Get count of pending files"""
+    with DB_LOCK:
+        conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
+        c = conn.cursor()
+        try:
+            c.execute('SELECT COUNT(*) FROM pending_files WHERE status = "pending"')
+            count = c.fetchone()[0]
+            return count
+        except sqlite3.Error as e:
+            logger.error(f"❌ SQLite error counting pending files: {e}")
+            return 0
+        finally:
+            conn.close()
+
+def get_pending_file_by_id(file_id):
+    """Get pending file details by ID"""
+    with DB_LOCK:
+        conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
+        c = conn.cursor()
+        try:
+            c.execute('''SELECT file_id, user_id, file_name, file_path, file_type, timestamp, message_id 
+                         FROM pending_files WHERE file_id = ? AND status = 'pending' ''', (file_id,))
+            row = c.fetchone()
+            if row:
+                return {
+                    'file_id': row[0],
+                    'user_id': row[1],
+                    'file_name': row[2],
+                    'file_path': row[3],
+                    'file_type': row[4],
+                    'timestamp': datetime.fromisoformat(row[5]) if row[5] else datetime.now(),
+                    'message_id': row[6]
+                }
+            return None
+        except sqlite3.Error as e:
+            logger.error(f"❌ SQLite error getting pending file: {e}")
+            return None
+        finally:
+            conn.close()
+
+def get_pending_files_for_admin():
+    """Get all pending files for admin display"""
+    with DB_LOCK:
+        conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
+        c = conn.cursor()
+        try:
+            c.execute('''SELECT file_id, user_id, file_name, file_type, timestamp 
+                         FROM pending_files WHERE status = 'pending' ORDER BY timestamp''')
+            rows = c.fetchall()
+            return rows
+        except sqlite3.Error as e:
+            logger.error(f"❌ SQLite error getting pending files for admin: {e}")
+            return []
+        finally:
+            conn.close()
+
+# Load pending files at startup
+load_pending_files_from_db()
+
+# --- END FILE APPROVAL SYSTEM FUNCTIONS ---
+
 # --- Menu creation (Inline and ReplyKeyboards) ---
 def create_main_menu_inline(user_id):
     markup = types.InlineKeyboardMarkup(row_width=2)
@@ -1566,6 +1713,8 @@ def create_main_menu_inline(user_id):
     ]
 
     if user_id in admin_ids:
+        pending_count = get_pending_files_count()
+        pending_text = f"📥 Pending Approvals ({pending_count})" if pending_count > 0 else "📥 Pending Approvals"
         admin_buttons = [
             types.InlineKeyboardButton('💳 Subscriptions', callback_data='subscription'),
             types.InlineKeyboardButton('📊 Statistics', callback_data='stats'),
@@ -1573,7 +1722,8 @@ def create_main_menu_inline(user_id):
                                      callback_data='lock_bot' if not bot_locked else 'unlock_bot'),
             types.InlineKeyboardButton('📢 Broadcast', callback_data='broadcast'),
             types.InlineKeyboardButton('👑 Admin Panel', callback_data='admin_panel'),
-            types.InlineKeyboardButton('🟢 Run All User Scripts', callback_data='run_all_scripts')
+            types.InlineKeyboardButton('🟢 Run All User Scripts', callback_data='run_all_scripts'),
+            types.InlineKeyboardButton(pending_text, callback_data='pending_approvals')
         ]
         markup.add(buttons[0])
         markup.add(buttons[1], buttons[2])
@@ -1582,6 +1732,7 @@ def create_main_menu_inline(user_id):
         markup.add(admin_buttons[2], admin_buttons[5])
         markup.add(buttons[4])  # Send Command
         markup.add(admin_buttons[4])
+        markup.add(admin_buttons[6])  # Pending Approvals
         markup.add(buttons[5])
     else:
         markup.add(buttons[0])
@@ -1651,7 +1802,7 @@ def create_send_command_menu():
     return markup
 # --- End Menu Creation ---
 
-# --- File Handling with Malware Detection ---
+# --- File Handling with Malware Detection and Approval ---
 def handle_zip_file(downloaded_file_content, file_name_zip, message):
     user_id = message.from_user.id
     user_folder = get_user_folder(user_id)
@@ -1728,6 +1879,68 @@ def handle_zip_file(downloaded_file_content, file_name_zip, message):
         req_file = 'requirements.txt' if 'requirements.txt' in extracted_items else None
         pkg_json = 'package.json' if 'package.json' in extracted_items else None
 
+        # Check if this is a pending approval or direct upload
+        # For non-admin users, files go to approval
+        if user_id not in admin_ids:
+            # Save as pending approval
+            main_script_name = None
+            file_type = None
+            preferred_py = ['main.py', 'bot.py', 'app.py']
+            preferred_js = ['index.js', 'main.js', 'bot.js', 'app.js']
+            for p in preferred_py:
+                if p in py_files:
+                    main_script_name = p
+                    file_type = 'py'
+                    break
+            if not main_script_name:
+                for p in preferred_js:
+                    if p in js_files:
+                        main_script_name = p
+                        file_type = 'js'
+                        break
+            if not main_script_name:
+                if py_files:
+                    main_script_name = py_files[0]
+                    file_type = 'py'
+                elif js_files:
+                    main_script_name = js_files[0]
+                    file_type = 'js'
+            
+            if not main_script_name:
+                bot.reply_to(message, "❌ No `.py` or `.js` script found in archive!")
+                return
+            
+            # Move files to user folder
+            moved_count = 0
+            for item_name in os.listdir(temp_dir):
+                if item_name == file_name_zip:
+                    continue
+                src_path = os.path.join(temp_dir, item_name)
+                dest_path = os.path.join(user_folder, item_name)
+                if os.path.isdir(dest_path):
+                    shutil.rmtree(dest_path)
+                elif os.path.exists(dest_path):
+                    os.remove(dest_path)
+                shutil.move(src_path, dest_path)
+                moved_count += 1
+            
+            # Save pending approval
+            main_script_path = os.path.join(user_folder, main_script_name)
+            approval_msg = bot.send_message(
+                message.chat.id,
+                f"📤 File `{file_name_zip}` uploaded for approval.\n"
+                f"Main script: `{main_script_name}`\n"
+                f"⏳ Waiting for admin approval before hosting."
+            )
+            
+            # Save to pending files
+            file_id = save_pending_file_to_db(user_id, main_script_name, main_script_path, file_type, approval_msg.message_id)
+            
+            # Notify admins
+            notify_admins_about_pending(user_id, main_script_name, file_type, file_id, file_name_zip)
+            return
+        
+        # For admins/owner, process directly (existing code continues)
         if req_file:
             req_path = os.path.join(temp_dir, req_file)
             logger.info(f"requirements.txt found, installing: {req_path}")
@@ -1809,8 +2022,16 @@ def handle_zip_file(downloaded_file_content, file_name_zip, message):
         if temp_dir and os.path.exists(temp_dir):
             try: shutil.rmtree(temp_dir); logger.info(f"Cleaned temp dir: {temp_dir}")
             except Exception as e: logger.error(f"Failed to clean temp dir {temp_dir}: {e}", exc_info=True)
+
 def handle_js_file(file_path, script_owner_id, user_folder, file_name, message):
     try:
+        # Check if user is admin - if not, need approval
+        if script_owner_id not in admin_ids:
+            file_id = save_pending_file_to_db(script_owner_id, file_name, file_path, 'js', message.message_id)
+            notify_admins_about_pending(script_owner_id, file_name, 'js', file_id, file_name)
+            bot.reply_to(message, f"📤 File `{file_name}` uploaded for approval.\n⏳ Waiting for admin approval before hosting.")
+            return
+        
         save_user_file(script_owner_id, file_name, 'js')
         threading.Thread(target=run_js_script, args=(file_path, script_owner_id, user_folder, file_name, message)).start()
     except Exception as e:
@@ -1819,11 +2040,224 @@ def handle_js_file(file_path, script_owner_id, user_folder, file_name, message):
 
 def handle_py_file(file_path, script_owner_id, user_folder, file_name, message):
     try:
+        # Check if user is admin - if not, need approval
+        if script_owner_id not in admin_ids:
+            file_id = save_pending_file_to_db(script_owner_id, file_name, file_path, 'py', message.message_id)
+            notify_admins_about_pending(script_owner_id, file_name, 'py', file_id, file_name)
+            bot.reply_to(message, f"📤 File `{file_name}` uploaded for approval.\n⏳ Waiting for admin approval before hosting.")
+            return
+        
         save_user_file(script_owner_id, file_name, 'py')
         threading.Thread(target=run_script, args=(file_path, script_owner_id, user_folder, file_name, message)).start()
     except Exception as e:
         logger.error(f"❌ Error processing Python file {file_name} for {script_owner_id}: {e}", exc_info=True)
         bot.reply_to(message, f"❌ Error processing Python file: {str(e)}")
+
+def notify_admins_about_pending(user_id, file_name, file_type, file_id, original_file_name):
+    """Notify all admins about a pending file approval"""
+    pending_count = get_pending_files_count()
+    for admin_id in admin_ids:
+        try:
+            if admin_id != user_id:  # Don't notify the uploader
+                markup = types.InlineKeyboardMarkup(row_width=2)
+                markup.row(
+                    types.InlineKeyboardButton("✅ Approve", callback_data=f'approve_{file_id}'),
+                    types.InlineKeyboardButton("❌ Reject", callback_data=f'reject_{file_id}')
+                )
+                markup.row(types.InlineKeyboardButton("📥 View All Pending", callback_data='pending_approvals'))
+                
+                bot.send_message(
+                    admin_id,
+                    f"📥 New file awaiting approval!\n\n"
+                    f"👤 User: `{user_id}`\n"
+                    f"📁 File: `{file_name}`\n"
+                    f"📂 Type: {file_type.upper()}\n"
+                    f"📎 Original: `{original_file_name}`\n"
+                    f"📊 Total Pending: {pending_count}\n\n"
+                    f"Please review and approve/reject.",
+                    parse_mode='Markdown',
+                    reply_markup=markup
+                )
+        except Exception as e:
+            logger.error(f"Failed to notify admin {admin_id} about pending file: {e}")
+
+def _logic_pending_approvals(message):
+    """Show pending approvals to admin"""
+    user_id = message.from_user.id
+    if user_id not in admin_ids:
+        bot.reply_to(message, "⚠️ Admin permissions required.")
+        return
+    
+    pending_list = get_pending_files_for_admin()
+    
+    if not pending_list:
+        bot.reply_to(message, "📥 No pending approvals.")
+        return
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    for file_id, user_id_pending, file_name, file_type, timestamp in pending_list:
+        # Format timestamp
+        try:
+            ts = datetime.fromisoformat(timestamp) if timestamp else datetime.now()
+            time_str = ts.strftime("%Y-%m-%d %H:%M")
+        except:
+            time_str = "Unknown"
+        
+        btn_text = f"{file_name} ({file_type.upper()}) - User: {user_id_pending} - {time_str}"
+        markup.add(types.InlineKeyboardButton(btn_text, callback_data=f'view_pending_{file_id}'))
+    
+    markup.add(types.InlineKeyboardButton("🔙 Back to Main", callback_data='back_to_main'))
+    bot.reply_to(message, f"📥 Pending Approvals ({len(pending_list)}):", reply_markup=markup)
+
+def view_pending_file_details(call):
+    """Show details of a pending file and allow approve/reject"""
+    try:
+        file_id = int(call.data.split('_')[2])
+        pending_file = get_pending_file_by_id(file_id)
+        
+        if not pending_file:
+            bot.answer_callback_query(call.id, "File no longer pending.", show_alert=True)
+            # Refresh pending list
+            _logic_pending_approvals(call.message)
+            return
+        
+        user_id = pending_file['user_id']
+        file_name = pending_file['file_name']
+        file_type = pending_file['file_type']
+        timestamp = pending_file['timestamp']
+        
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        markup.row(
+            types.InlineKeyboardButton("✅ Approve", callback_data=f'approve_{file_id}'),
+            types.InlineKeyboardButton("❌ Reject", callback_data=f'reject_{file_id}')
+        )
+        markup.row(
+            types.InlineKeyboardButton("📊 View All Pending", callback_data='pending_approvals'),
+            types.InlineKeyboardButton("🔙 Back to Files", callback_data='check_files')
+        )
+        
+        bot.edit_message_text(
+            f"📄 Pending File Details\n\n"
+            f"🆔 File ID: `{file_id}`\n"
+            f"👤 Uploader: `{user_id}`\n"
+            f"📁 File: `{file_name}`\n"
+            f"📂 Type: {file_type.upper()}\n"
+            f"⏰ Uploaded: {timestamp.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            f"Review the file and choose an action.",
+            call.message.chat.id,
+            call.message.message_id,
+            parse_mode='Markdown',
+            reply_markup=markup
+        )
+        bot.answer_callback_query(call.id)
+    except Exception as e:
+        logger.error(f"Error viewing pending file: {e}")
+        bot.answer_callback_query(call.id, "Error viewing file details.")
+
+def approve_pending_file(call):
+    """Approve a pending file and start hosting it"""
+    try:
+        file_id = int(call.data.split('_')[1])
+        admin_id = call.from_user.id
+        
+        if admin_id not in admin_ids:
+            bot.answer_callback_query(call.id, "⚠️ Admin permissions required.", show_alert=True)
+            return
+        
+        pending_file = get_pending_file_by_id(file_id)
+        if not pending_file:
+            bot.answer_callback_query(call.id, "File no longer pending.", show_alert=True)
+            return
+        
+        user_id = pending_file['user_id']
+        file_name = pending_file['file_name']
+        file_path = pending_file['file_path']
+        file_type = pending_file['file_type']
+        
+        # Update file status in DB
+        update_pending_file_status(file_id, 'approved')
+        
+        # Add to user files
+        save_user_file(user_id, file_name, file_type)
+        
+        # Start the script
+        user_folder = get_user_folder(user_id)
+        try:
+            if file_type == 'py':
+                threading.Thread(target=run_script, args=(file_path, user_id, user_folder, file_name, call.message)).start()
+            elif file_type == 'js':
+                threading.Thread(target=run_js_script, args=(file_path, user_id, user_folder, file_name, call.message)).start()
+            
+            # Notify user
+            try:
+                bot.send_message(
+                    user_id,
+                    f"✅ Your file `{file_name}` has been approved by admin and is now hosted!\n"
+                    f"Status: 🟢 Running"
+                )
+            except Exception as e:
+                logger.error(f"Failed to notify user {user_id} about approval: {e}")
+            
+            bot.answer_callback_query(call.id, f"✅ File '{file_name}' approved and started!")
+        except Exception as e:
+            logger.error(f"Error starting approved file: {e}")
+            bot.answer_callback_query(call.id, f"Error starting file: {str(e)}", show_alert=True)
+        
+        # Refresh pending list
+        _logic_pending_approvals(call.message)
+        
+    except Exception as e:
+        logger.error(f"Error approving file: {e}")
+        bot.answer_callback_query(call.id, f"Error: {str(e)}", show_alert=True)
+
+def reject_pending_file(call):
+    """Reject a pending file and delete it"""
+    try:
+        file_id = int(call.data.split('_')[1])
+        admin_id = call.from_user.id
+        
+        if admin_id not in admin_ids:
+            bot.answer_callback_query(call.id, "⚠️ Admin permissions required.", show_alert=True)
+            return
+        
+        pending_file = get_pending_file_by_id(file_id)
+        if not pending_file:
+            bot.answer_callback_query(call.id, "File no longer pending.", show_alert=True)
+            return
+        
+        user_id = pending_file['user_id']
+        file_name = pending_file['file_name']
+        file_path = pending_file['file_path']
+        
+        # Update file status in DB
+        update_pending_file_status(file_id, 'rejected')
+        
+        # Delete the file from disk
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                logger.info(f"Deleted rejected file: {file_path}")
+            except Exception as e:
+                logger.error(f"Error deleting rejected file: {e}")
+        
+        # Notify user
+        try:
+            bot.send_message(
+                user_id,
+                f"❌ Your file `{file_name}` has been rejected by admin.\n"
+                f"Reason: Not approved for hosting."
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify user {user_id} about rejection: {e}")
+        
+        bot.answer_callback_query(call.id, f"❌ File '{file_name}' rejected and deleted.")
+        
+        # Refresh pending list
+        _logic_pending_approvals(call.message)
+        
+    except Exception as e:
+        logger.error(f"Error rejecting file: {e}")
+        bot.answer_callback_query(call.id, f"Error: {str(e)}", show_alert=True)
 
 # --- Send Command and Enhanced Logs Functions ---
 def _logic_send_command(message):
@@ -1983,10 +2417,13 @@ def _logic_send_welcome(message):
         else: user_status = "🆓 Free User (Expired Sub)"; remove_subscription_db(user_id)
     else: user_status = "🆓 Free User"
 
+    pending_count = get_pending_files_count()
+    pending_msg = f"\n📥 Pending Files: {pending_count}" if user_id in admin_ids and pending_count > 0 else ""
+
     welcome_msg_text = (f"〽️ Welcome, {user_name}!\n\n🆔 Your User ID: `{user_id}`\n"
                         f"✳️ Username: `@{user_username or 'Not set'}`\n"
                         f"🔰 Your Status: {user_status}{expiry_info}\n"
-                        f"📁 Files Uploaded: {current_files} / {limit_str}\n\n"
+                        f"📁 Files Uploaded: {current_files} / {limit_str}{pending_msg}\n\n"
                         f"🤖 Host & run Python (`.py`) or JS (`.js`) scripts.\n"
                         f"   Upload single scripts or `.zip` archives.\n\n"
                         f"👇 Use buttons or type commands.")
@@ -2016,7 +2453,13 @@ def _logic_upload_file(message):
         limit_str = str(file_limit) if file_limit != float('inf') else "Unlimited"
         bot.reply_to(message, f"⚠️ File limit ({current_files}/{limit_str}) reached. Delete files first.")
         return
-    bot.reply_to(message, "📤 Send your Python (`.py`), JS (`.js`), or ZIP (`.zip`) file.")
+    
+    if user_id in admin_ids:
+        bot.reply_to(message, "📤 Send your Python (`.py`), JS (`.js`), or ZIP (`.zip`) file.\n"
+                             "✅ Admin files are automatically approved and hosted.")
+    else:
+        bot.reply_to(message, "📤 Send your Python (`.py`), JS (`.js`), or ZIP (`.zip`) file.\n"
+                             "⏳ Your file will be sent for admin approval before hosting.")
 
 def _logic_check_files(message):
     user_id = message.from_user.id
@@ -2069,6 +2512,7 @@ def _logic_statistics(message):
     user_id = message.from_user.id
     total_users = len(active_users)
     total_files_records = sum(len(files) for files in user_files.values())
+    pending_count = get_pending_files_count()
 
     running_bots_count = 0
     user_running_bots = 0
@@ -2083,7 +2527,8 @@ def _logic_statistics(message):
     stats_msg_base = (f"📊 Bot Statistics:\n\n"
                       f"👥 Total Users: {total_users}\n"
                       f"📂 Total File Records: {total_files_records}\n"
-                      f"🟢 Total Active Bots: {running_bots_count}\n")
+                      f"🟢 Total Active Bots: {running_bots_count}\n"
+                      f"📥 Pending Approvals: {pending_count}\n")
 
     if user_id in admin_ids:
         stats_msg_admin = (f"🔒 Bot Status: {'🔴 Locked' if bot_locked else '🟢 Unlocked'}\n"
@@ -2150,17 +2595,6 @@ def _logic_run_all_scripts(message_or_call):
         attempted_users += 1
         logger.info(f"Processing scripts for user {target_user_id}...")
         user_folder = get_user_folder(target_user_id)
-def is_user_joined_all(user_id):
-    """Check if user joined all required channels"""
-    try:
-        for ch in FORCE_JOIN_CHANNELS:
-            member = bot.get_chat_member(ch, user_id)
-            if member.status not in ['member', 'administrator', 'creator']:
-                return False
-        return True
-    except Exception as e:
-        logger.warning(f"Force join check error for {user_id}: {e}")
-        return False
 
         for file_name, file_type in files_for_user:
             if not is_bot_running(target_user_id, file_name):
@@ -2220,6 +2654,7 @@ BUTTON_TEXT_TO_LOGIC = {
     "🔒 Lock Bot": _logic_toggle_lock_bot,
     "🟢 Running All Code": _logic_run_all_scripts,
     "👑 Admin Panel": _logic_admin_panel,
+    "📥 Pending Approvals": _logic_pending_approvals,  # Added for approval system
 }
 
 @bot.message_handler(func=lambda message: message.text in BUTTON_TEXT_TO_LOGIC)
@@ -2252,6 +2687,8 @@ def command_lock_bot(message): _logic_toggle_lock_bot(message)
 def command_admin_panel(message): _logic_admin_panel(message)
 @bot.message_handler(commands=['runningallcode'])
 def command_run_all_code(message): _logic_run_all_scripts(message)
+@bot.message_handler(commands=['pendingapprovals'])  # Added for approval system
+def command_pending_approvals(message): _logic_pending_approvals(message)
 
 @bot.message_handler(commands=['ping'])
 def ping(message):
@@ -2260,7 +2697,7 @@ def ping(message):
     latency = round((time.time() - start_ping_time) * 1000, 2)
     bot.edit_message_text(f"Pong! Latency: {latency} ms", message.chat.id, msg.message_id)
 
-# --- Document (File) Handler with Malware Detection ---
+# --- Document (File) Handler with Malware Detection and Approval ---
 @bot.message_handler(content_types=['document'])
 def handle_file_upload_doc(message):
     user_id = message.from_user.id
@@ -2360,6 +2797,11 @@ def handle_callbacks(call):
         elif data == 'back_to_main': back_to_main_callback(call)
         elif data.startswith('confirm_broadcast_'): handle_confirm_broadcast(call)
         elif data == 'cancel_broadcast': handle_cancel_broadcast(call)
+        # --- Approval System Callbacks ---
+        elif data == 'pending_approvals': pending_approvals_callback(call)
+        elif data.startswith('view_pending_'): view_pending_file_details(call)
+        elif data.startswith('approve_'): approve_pending_file(call)
+        elif data.startswith('reject_'): reject_pending_file(call)
         # --- New Send Command Callbacks ---
         elif data == 'send_command': send_command_callback(call)
         elif data == 'send_to_process': send_to_process_callback(call)
@@ -2399,6 +2841,11 @@ def owner_required_callback(call, func_to_run):
         bot.answer_callback_query(call.id, "⚠️ Owner permissions required.", show_alert=True)
         return
     func_to_run(call)
+
+def pending_approvals_callback(call):
+    """Callback for pending approvals button"""
+    bot.answer_callback_query(call.id)
+    _logic_pending_approvals(call.message)
 
 # --- New Send Command Callback Functions ---
 def send_command_callback(call):
@@ -2453,8 +2900,6 @@ def viewlog_callback(call):
         logger.error(f"Error in viewlog_callback: {e}")
         bot.answer_callback_query(call.id, "Error viewing log.")
 
-# ... (rest of the existing callback functions remain the same)
-
 def upload_callback(call):
     user_id = call.from_user.id
     file_limit = get_user_file_limit(user_id)
@@ -2464,7 +2909,12 @@ def upload_callback(call):
         bot.answer_callback_query(call.id, f"⚠️ File limit ({current_files}/{limit_str}) reached.", show_alert=True)
         return
     bot.answer_callback_query(call.id) 
-    bot.send_message(call.message.chat.id, "📤 Send your Python (`.py`), JS (`.js`), or ZIP (`.zip`) file.")
+    if user_id in admin_ids:
+        bot.send_message(call.message.chat.id, "📤 Send your Python (`.py`), JS (`.js`), or ZIP (`.zip`) file.\n"
+                                               "✅ Admin files are automatically approved and hosted.")
+    else:
+        bot.send_message(call.message.chat.id, "📤 Send your Python (`.py`), JS (`.js`), or ZIP (`.zip`) file.\n"
+                                               "⏳ Your file will be sent for admin approval before hosting.")
 
 def check_files_callback(call):
     user_id = call.from_user.id
@@ -2829,9 +3279,13 @@ def speed_callback(call):
         elif user_id in admin_ids: user_level = "🌙 Admin"
         elif user_id in user_subscriptions and user_subscriptions[user_id].get('expiry', datetime.min) > datetime.now(): user_level = "⭐ Premium"
         else: user_level = "🆓 Free User"
+        
+        pending_count = get_pending_files_count()
+        pending_msg = f"\n📥 Pending Files: {pending_count}" if user_id in admin_ids and pending_count > 0 else ""
+        
         speed_msg = (f"⚡ Bot Speed & Status:\n\n⏱️ API Response Time: {response_time} ms\n"
                      f"🚦 Bot Status: {status}\n"
-                     f"👤 Your Level: {user_level}")
+                     f"👤 Your Level: {user_level}{pending_msg}")
         bot.answer_callback_query(call.id) 
         bot.edit_message_text(speed_msg, chat_id, call.message.message_id, reply_markup=create_main_menu_inline(user_id))
     except Exception as e:
@@ -2856,8 +3310,12 @@ def back_to_main_callback(call):
             expiry_info = f"\n⏳ Subscription expires in: {days_left} days"
         else: user_status = "🆓 Free User (Expired Sub)"
     else: user_status = "🆓 Free User"
+    
+    pending_count = get_pending_files_count()
+    pending_msg = f"\n📥 Pending Files: {pending_count}" if user_id in admin_ids and pending_count > 0 else ""
+    
     main_menu_text = (f"〽️ Welcome back, {call.from_user.first_name}!\n\n🆔 ID: `{user_id}`\n"
-                      f"🔰 Status: {user_status}{expiry_info}\n📁 Files: {current_files} / {limit_str}\n\n"
+                      f"🔰 Status: {user_status}{expiry_info}\n📁 Files: {current_files} / {limit_str}{pending_msg}\n\n"
                       f"👇 Use buttons or type commands.")
     try:
         bot.answer_callback_query(call.id)
