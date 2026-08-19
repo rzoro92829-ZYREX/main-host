@@ -62,7 +62,7 @@ FORCE_JOIN_CHANNELS = {
     "@botscripts18": "💎 𝐎ғғɪᴄɪᴀʟ 𝐂ʜᴀɴɴᴇʟ",
     "@TheNextLevelOfficial": "💎 PARTNER'S CHANNEL",
     "@trusted_censored": "💎 FRIENDS CHANNEL",
-    "@botscriptsbackupl": "💎 back up channel",
+    "@botscriptsbackup": "💎 back up channel",
 
 }
 
