@@ -53,16 +53,16 @@ def keep_alive():
 # --- End Flask Keep Alive ---
 
 # --- Configuration ---
-TOKEN = '8762789304:AAG4ROCZMDDRqYvx2KbvOGZ-lNLjmwMQTIE' #bot token dalo yeha
-OWNER_ID = 8909378644 #yha tumhra chat id dalo
-ADMIN_ID = 8909378644 #yeha koi admin ya tumhara chat id dalo
-YOUR_USERNAME = '@anbu_shisui18' #yeha tumhra username dala
-UPDATE_CHANNEL = 'https://t.me/botscripts18' #yeha chnl link dalo''
+TOKEN = '8840754309:AAHUjMIKj_d2tPVAc6U1Y2MrIU9bRDV30a0' #bot token dalo yeha
+OWNER_ID = 7769604048 #yha tumhra chat id dalo
+ADMIN_ID = 7769604048 #yeha koi admin ya tumhara chat id dalo
+YOUR_USERNAME = '@zyrex_14_18' #yeha tumhra username dala
+UPDATE_CHANNEL = 'https://t.me/Elite_404OP' #yeha chnl link dalo''
 FORCE_JOIN_CHANNELS = {
-    "@botscripts18": "💎 𝐎ғғɪᴄɪᴀʟ 𝐂ʜᴀɴɴᴇʟ",
+    "@elite_404op": "💎 𝐎ғғɪᴄɪᴀʟ 𝐂ʜᴀɴɴᴇʟ",
     "@TheNextLevelOfficial": "💎 PARTNER'S CHANNEL",
-    "@trusted_censored": "💎 FRIENDS CHANNEL",
-    "@botscriptsbackup": "💎 back up channel",
+    
+    
 
 }
 
