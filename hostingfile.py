@@ -53,18 +53,15 @@ def keep_alive():
 # --- End Flask Keep Alive ---
 
 # --- Configuration ---
-TOKEN = '8840754309:AAHUjMIKj_d2tPVAc6U1Y2MrIU9bRDV30a0' #bot token dalo yeha
-OWNER_ID = 7769604048 #yha tumhra chat id dalo
-ADMIN_ID = 7769604048 #yeha koi admin ya tumhara chat id dalo
-YOUR_USERNAME = '@zyrex_14_18' #yeha tumhra username dala
-UPDATE_CHANNEL = 'https://t.me/Elite_404OP' #yeha chnl link dalo''
-FORCE_JOIN_CHANNELS = {
-    "@elite_404op": "💎 𝐎ғғɪᴄɪᴀʟ 𝐂ʜᴀɴɴᴇʟ",
-    "@TheNextLevelOfficial": "💎 PARTNER'S CHANNEL",
-    
-    
+TOKEN = '8840754309:AAHUjMIKj_d2tPVAc6U1Y2MrIU9bRDV30a0'  # bot token dalo yeha
+OWNER_ID = 7769604048  # yha tumhra chat id dalo
+ADMIN_ID = 7769604048  # yeha koi admin ya tumhara chat id dalo
+YOUR_USERNAME = '@zyrex_14_18'  # yeha tumhra username dala
+UPDATE_CHANNEL = 'https://t.me/Elite_404OP'  # yeha chnl link dalo
 
-}
+# 🔐 PASSWORD SYSTEM CONFIGURATION
+BOT_ACCESS_PASSWORD = "180310"  # Change this to your desired password
+PASSWORD_REQUIRED = True  # Set to False to disable password requirement
 
 # Folder setup - using absolute paths
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -94,48 +91,28 @@ admin_ids = {ADMIN_ID, OWNER_ID}
 bot_locked = False
 file_db = {}
 
-# 👉 YAHAN ADD KARO
+# 👉 PASSWORD SYSTEM DATA
+authenticated_users = set()  # Users who have entered correct password
+pending_auth_users = {}  # {user_id: {'password': str, 'timestamp': datetime, 'name': str, 'username': str}}
 banned_users = set()
 banned_usernames = set()
 
 # --- FILE APPROVAL SYSTEM ---
-# Dictionary to store pending files for approval
-# Structure: {file_id: {'user_id': user_id, 'file_name': file_name, 'file_path': file_path, 
-#                       'file_type': file_type, 'timestamp': datetime, 'message_id': message_id}}
 pending_files = {}
 pending_file_counter = 0
 
 # --- Malware Detection Configuration ---
 MALWARE_SIGNATURES = [
-    b'MZ',  # Windows executable
-    b'\x7fELF',  # Linux executable
-    b'\xfe\xed\xfa',  # Mach-O binary
-    b'\xce\xfa\xed\xfe',  # Mach-O binary (reverse)
-    b'PK',  # ZIP archive (could be encrypted)
-    b'Rar!',  # RAR archive
+    b'MZ', b'\x7fELF', b'\xfe\xed\xfa', b'\xce\xfa\xed\xfe', b'PK', b'Rar!',
 ]
 
 ENCRYPTED_FILE_INDICATORS = [
-    b'openssl',
-    b'encrypted',
-    b'cipher',
-    b'DES',
-    b'RSA',
-    b'GPG',
-    b'PGP',
+    b'openssl', b'encrypted', b'cipher', b'DES', b'RSA', b'GPG', b'PGP',
 ]
 
 SUSPICIOUS_KEYWORDS = [
-    b'ransomware',
-    b'trojan',
-    b'virus',
-    b'malware',
-    b'backdoor',
-    b'exploit',
-    b'payload',
-    b'botnet',
-    b'keylogger',
-    b'rootkit',
+    b'ransomware', b'trojan', b'virus', b'malware', b'backdoor', b'exploit',
+    b'payload', b'botnet', b'keylogger', b'rootkit',
 ]
 
 # --- Logging Setup ---
@@ -143,68 +120,54 @@ logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# --- Command Button Layouts (ReplyKeyboardMarkup) ---
+# --- Cool UI Constants ---
+DIVIDER = "━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+DIVIDER_THIN = "┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄"
+EMOJI_HEADER = "╔══════════════════════════╗"
+EMOJI_FOOTER = "╚══════════════════════════╝"
+
+# --- Command Button Layouts ---
 COMMAND_BUTTONS_LAYOUT_USER_SPEC = [
     ["📢 Updates Channel"],
     ["📤 Upload File", "📂 Check Files"],
     ["⚡ Bot Speed", "📊 Statistics"],
-    ["📤 Send Command", "📞 Contact Owner"]  # Added Send Command
+    ["📤 Send Command", "📞 Contact Owner"]
 ]
+
 ADMIN_COMMAND_BUTTONS_LAYOUT_USER_SPEC = [
     ["📢 Updates Channel"],
     ["📤 Upload File", "📂 Check Files"],
     ["⚡ Bot Speed", "📊 Statistics"],
     ["💳 Subscriptions", "📢 Broadcast"],
     ["🔒 Lock Bot", "🟢 Running All Code"],
-    ["📤 Send Command", "👑 Admin Panel"],  # Added Send Command
+    ["📤 Send Command", "👑 Admin Panel"],
     ["📞 Contact Owner"],
-    ["📥 Pending Approvals"]  # Added for approval system
+    ["📥 Pending Approvals"],
+    ["🔐 Auth Requests"]
 ]
 
-def send_force_join_msg(chat_id):
-    markup = types.InlineKeyboardMarkup(row_width=1)
+# --- Cool UI Helper Functions ---
+def cool_box(title, content, emoji="✨"):
+    """Create a cool looking message box"""
+    return f"{EMOJI_HEADER}\n{emoji} {title}\n{EMOJI_FOOTER}\n\n{content}\n\n{DIVIDER_THIN}"
 
-    for ch, name in FORCE_JOIN_CHANNELS.items():
-        markup.add(
-            types.InlineKeyboardButton(
-                text=name,
-                url=f"https://t.me/{ch.replace('@', '')}"
-            )
-        )
+def cool_divider():
+    return f"\n{DIVIDER}\n"
 
-    markup.add(
-        types.InlineKeyboardButton(
-            "✅ Joined All",
-            callback_data="force_join_check"
-        )
-    )
+def fancy_status(running):
+    """Return fancy status text"""
+    return "🟢 ʀᴜɴɴɪɴɢ" if running else "🔴 ꜱᴛᴏᴘᴘᴇᴅ"
 
-    bot.send_message(
-        chat_id,
-        "𝐉𝐎𝐈𝐍 𝐀𝐋𝐋 𝐂𝐇𝐀𝐍𝐍𝐄𝐋 𝐓𝐎 𝐔𝐒𝐄 𝐌𝐄 🤍🌙:",
-        reply_markup=markup
-    )
-
-
-def is_user_joined_all(user_id):
-    try:
-        for ch in FORCE_JOIN_CHANNELS.keys():
-            member = bot.get_chat_member(ch, user_id)
-
-            if member.status not in [
-                'member',
-                'administrator',
-                'creator'
-            ]:
-                return False
-
-        return True
-
-    except Exception as e:
-        logger.warning(
-            f"Force join check error for {user_id}: {e}"
-        )
-        return False
+def fancy_user_status(user_id):
+    """Return fancy user status"""
+    if user_id == OWNER_ID:
+        return "👑 ᴏᴡɴᴇʀ"
+    elif user_id in admin_ids:
+        return "⭐ ᴀᴅᴍɪɴ"
+    elif user_id in user_subscriptions and user_subscriptions[user_id].get('expiry', datetime.min) > datetime.now():
+        return "💎 ᴘʀᴇᴍɪᴜᴍ"
+    else:
+        return "🆓 ꜰʀᴇᴇ ᴜꜱᴇʀ"
 
 # --- Database Setup ---
 def init_db():
@@ -222,7 +185,6 @@ def init_db():
                      (user_id INTEGER PRIMARY KEY)''')
         c.execute('''CREATE TABLE IF NOT EXISTS admins
                      (user_id INTEGER PRIMARY KEY)''')
-        # Add pending files table for approval system
         c.execute('''CREATE TABLE IF NOT EXISTS pending_files
                      (file_id INTEGER PRIMARY KEY AUTOINCREMENT,
                       user_id INTEGER,
@@ -232,6 +194,10 @@ def init_db():
                       timestamp TEXT,
                       message_id INTEGER,
                       status TEXT DEFAULT 'pending')''')
+        # 🔐 New table for authenticated users
+        c.execute('''CREATE TABLE IF NOT EXISTS authenticated_users
+                     (user_id INTEGER PRIMARY KEY,
+                      authenticated_at TEXT)''')
         c.execute('INSERT OR IGNORE INTO admins (user_id) VALUES (?)', (OWNER_ID,))
         if ADMIN_ID != OWNER_ID:
             c.execute('INSERT OR IGNORE INTO admins (user_id) VALUES (?)', (ADMIN_ID,))
@@ -244,11 +210,11 @@ def init_db():
 def load_data():
     """Load data from database into memory"""
     logger.info("Loading data from database...")
+    global authenticated_users
     try:
         conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
         c = conn.cursor()
 
-        # Load subscriptions
         c.execute('SELECT user_id, expiry FROM subscriptions')
         for user_id, expiry in c.fetchall():
             try:
@@ -256,37 +222,356 @@ def load_data():
             except ValueError:
                 logger.warning(f"⚠️ Invalid expiry date format for user {user_id}: {expiry}. Skipping.")
 
-        # Load user files
         c.execute('SELECT user_id, file_name, file_type FROM user_files')
         for user_id, file_name, file_type in c.fetchall():
             if user_id not in user_files:
                 user_files[user_id] = []
             user_files[user_id].append((file_name, file_type))
 
-        # Load active users
         c.execute('SELECT user_id FROM active_users')
         active_users.update(user_id for (user_id,) in c.fetchall())
 
-        # Load admins
         c.execute('SELECT user_id FROM admins')
         admin_ids.update(user_id for (user_id,) in c.fetchall())
 
+        # 🔐 Load authenticated users
+        c.execute('SELECT user_id FROM authenticated_users')
+        authenticated_users.update(user_id for (user_id,) in c.fetchall())
+
         conn.close()
-        logger.info(f"Data loaded: {len(active_users)} users, {len(user_subscriptions)} subscriptions, {len(admin_ids)} admins.")
+        logger.info(f"Data loaded: {len(active_users)} users, {len(user_subscriptions)} subscriptions, {len(admin_ids)} admins, {len(authenticated_users)} authenticated.")
     except Exception as e:
         logger.error(f"❌ Error loading data: {e}", exc_info=True)
 
-# Initialize DB and Load Data at startup
 init_db()
 load_data()
 # --- End Database Setup ---
 
-# --- Malware Detection Functions ---
-# Replace the magic import and is_suspicious_file function
+# --- Password Authentication Functions ---
+def save_authenticated_user(user_id):
+    """Save authenticated user to database"""
+    with DB_LOCK:
+        conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
+        c = conn.cursor()
+        try:
+            c.execute('INSERT OR REPLACE INTO authenticated_users (user_id, authenticated_at) VALUES (?, ?)',
+                      (user_id, datetime.now().isoformat()))
+            conn.commit()
+            authenticated_users.add(user_id)
+            logger.info(f"Saved authenticated user {user_id}")
+            return True
+        except sqlite3.Error as e:
+            logger.error(f"❌ SQLite error saving authenticated user: {e}")
+            return False
+        finally:
+            conn.close()
 
+def is_user_authenticated(user_id):
+    """Check if user is authenticated"""
+    if not PASSWORD_REQUIRED:
+        return True
+    if user_id in admin_ids:
+        return True
+    return user_id in authenticated_users
+
+def send_password_prompt(chat_id, user_name=""):
+    """Send password entry prompt with cool UI"""
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton("🔐 ᴇɴᴛᴇʀ ᴘᴀꜱꜱᴡᴏʀᴅ", callback_data="enter_password")
+    )
+    
+    welcome_text = f"""
+{EMOJI_HEADER}
+   🔐 ᴀᴄᴄᴇꜱꜱ ʀᴇQᴜɪʀᴇᴅ
+{EMOJI_FOOTER}
+
+👋 ʜᴇʟʟᴏ {user_name}!
+
+{DIVIDER_THIN}
+
+🔒 ᴛʜɪꜱ ʙᴏᴛ ɪꜱ ᴘʀɪᴠᴀᴛᴇ ᴀɴᴅ ʀᴇQᴜɪʀᴇꜱ ᴀ ᴘᴀꜱꜱᴡᴏʀᴅ ᴛᴏ ᴀᴄᴄᴇꜱꜱ.
+
+📝 ᴛᴏ ɢᴇᴛ ᴀᴄᴄᴇꜱꜱ:
+   • ᴄʟɪᴄᴋ ᴛʜᴇ ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ
+   • ᴇɴᴛᴇʀ ᴛʜᴇ ᴄᴏʀʀᴇᴄᴛ ᴘᴀꜱꜱᴡᴏʀᴅ
+   • ᴡᴀɪᴛ ꜰᴏʀ ᴏᴡɴᴇʀ ᴀᴘᴘʀᴏᴠᴀʟ
+
+{DIVIDER_THIN}
+
+💡 ᴅᴏɴ'ᴛ ʜᴀᴠᴇ ᴀ ᴘᴀꜱꜱᴡᴏʀᴅ?
+   ᴄᴏɴᴛᴀᴄᴛ: {YOUR_USERNAME}
+
+{DIVIDER}
+"""
+    
+    try:
+        bot.send_message(chat_id, welcome_text, reply_markup=markup)
+    except Exception as e:
+        logger.error(f"Error sending password prompt: {e}")
+
+def process_password_entry(message):
+    """Process password entered by user"""
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    user_name = message.from_user.first_name
+    user_username = message.from_user.username
+    
+    entered_password = message.text.strip()
+    
+    if entered_password == BOT_ACCESS_PASSWORD:
+        # Check if already pending
+        if user_id in pending_auth_users:
+            bot.reply_to(message, f"""
+{DIVIDER_THIN}
+⏳ ʏᴏᴜʀ ʀᴇQᴜᴇꜱᴛ ɪꜱ ᴀʟʀᴇᴀᴅʏ ᴘᴇɴᴅɪɴɢ!
+
+ᴘʟᴇᴀꜱᴇ ᴡᴀɪᴛ ꜰᴏʀ ᴛʜᴇ ᴏᴡɴᴇʀ ᴛᴏ ᴀᴘᴘʀᴏᴠᴇ ʏᴏᴜʀ ᴀᴄᴄᴇꜱꜱ.
+{DIVIDER_THIN}
+""")
+            return
+        
+        # Add to pending auth
+        pending_auth_users[user_id] = {
+            'password': entered_password,
+            'timestamp': datetime.now(),
+            'name': user_name,
+            'username': user_username
+        }
+        
+        bot.reply_to(message, f"""
+{EMOJI_HEADER}
+   ✅ ᴘᴀꜱꜱᴡᴏʀᴅ ᴄᴏʀʀᴇᴄᴛ!
+{EMOJI_FOOTER}
+
+⏳ ʏᴏᴜʀ ᴀᴄᴄᴇꜱꜱ ʀᴇQᴜᴇꜱᴛ ʜᴀꜱ ʙᴇᴇɴ ꜱᴇɴᴛ ᴛᴏ ᴛʜᴇ ᴏᴡɴᴇʀ.
+
+📌 ᴘʟᴇᴀꜱᴇ ᴡᴀɪᴛ ꜰᴏʀ ᴀᴘᴘʀᴏᴠᴀʟ.
+   ʏᴏᴜ'ʟʟ ʙᴇ ɴᴏᴛɪꜰɪᴇᴅ ᴏɴᴄᴇ ᴀᴘᴘʀᴏᴠᴇᴅ.
+
+{DIVIDER}
+""")
+        
+        # Notify owner
+        notify_owner_about_auth_request(user_id, user_name, user_username)
+        
+    else:
+        bot.reply_to(message, f"""
+{EMOJI_HEADER}
+   ❌ ᴡʀᴏɴɢ ᴘᴀꜱꜱᴡᴏʀᴅ!
+{EMOJI_FOOTER}
+
+🔒 ᴛʜᴇ ᴘᴀꜱꜱᴡᴏʀᴅ ʏᴏᴜ ᴇɴᴛᴇʀᴇᴅ ɪꜱ ɪɴᴄᴏʀʀᴇᴄᴛ.
+
+📝 ᴘʟᴇᴀꜱᴇ ᴛʀʏ ᴀɢᴀɪɴ ᴡɪᴛʜ ᴛʜᴇ ᴄᴏʀʀᴇᴄᴛ ᴘᴀꜱꜱᴡᴏʀᴅ.
+
+{DIVIDER}
+""")
+        # Ask again
+        send_password_prompt(chat_id, user_name)
+
+def notify_owner_about_auth_request(user_id, user_name, user_username):
+    """Notify owner about new auth request"""
+    try:
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        markup.row(
+            types.InlineKeyboardButton("✅ ᴀᴘᴘʀᴏᴠᴇ", callback_data=f'auth_approve_{user_id}'),
+            types.InlineKeyboardButton("❌ ʀᴇᴊᴇᴄᴛ", callback_data=f'auth_reject_{user_id}')
+        )
+        
+        notification = f"""
+{EMOJI_HEADER}
+   🔐 ɴᴇᴡ ᴀᴄᴄᴇꜱꜱ ʀᴇQᴜᴇꜱᴛ
+{EMOJI_FOOTER}
+
+👤 ɴᴀᴍᴇ: {user_name}
+✳️ ᴜꜱᴇʀɴᴀᴍᴇ: @{user_username or 'ɴ/ᴀ'}
+🆔 ɪᴅ: `{user_id}`
+
+{DIVIDER_THIN}
+
+✅ ᴘᴀꜱꜱᴡᴏʀᴅ ᴠᴇʀɪꜰɪᴇᴅ
+
+{DIVIDER_THIN}
+
+ᴄʜᴏᴏꜱᴇ ᴀɴ ᴀᴄᴛɪᴏɴ ʙᴇʟᴏᴡ:
+"""
+        
+        for admin_id in admin_ids:
+            try:
+                bot.send_message(admin_id, notification, parse_mode='Markdown', reply_markup=markup)
+            except Exception as e:
+                logger.error(f"Failed to notify admin {admin_id}: {e}")
+    except Exception as e:
+        logger.error(f"Error notifying owner about auth request: {e}")
+
+def approve_user_auth(call):
+    """Approve user authentication"""
+    try:
+        user_id = int(call.data.split('_')[2])
+        admin_id = call.from_user.id
+        
+        if admin_id not in admin_ids:
+            bot.answer_callback_query(call.id, "⚠️ Admin permissions required.", show_alert=True)
+            return
+        
+        if user_id not in pending_auth_users:
+            bot.answer_callback_query(call.id, "User no longer pending.", show_alert=True)
+            return
+        
+        # Save authenticated user
+        save_authenticated_user(user_id)
+        
+        # Remove from pending
+        pending_auth_users.pop(user_id, None)
+        
+        # Notify user
+        try:
+            bot.send_message(user_id, f"""
+{EMOJI_HEADER}
+   🎉 ᴀᴄᴄᴇꜱꜱ ɢʀᴀɴᴛᴇᴅ!
+{EMOJI_FOOTER}
+
+✅ ʏᴏᴜʀ ᴀᴄᴄᴇꜱꜱ ʜᴀꜱ ʙᴇᴇɴ ᴀᴘᴘʀᴏᴠᴇᴅ ʙʏ ᴛʜᴇ ᴏᴡɴᴇʀ!
+
+🚀 ʏᴏᴜ ᴄᴀɴ ɴᴏᴡ ᴜꜱᴇ ᴛʜᴇ ʙᴏᴛ.
+
+📝 ꜱᴇɴᴅ /start ᴛᴏ ʙᴇɢɪɴ.
+
+{DIVIDER}
+""")
+        except Exception as e:
+            logger.error(f"Failed to notify user {user_id}: {e}")
+        
+        bot.answer_callback_query(call.id, f"✅ User {user_id} approved!")
+        
+        # Update the notification message
+        try:
+            bot.edit_message_text(
+                f"✅ ᴀᴘᴘʀᴏᴠᴇᴅ ᴜꜱᴇʀ `{user_id}`",
+                call.message.chat.id,
+                call.message.message_id,
+                parse_mode='Markdown'
+            )
+        except Exception:
+            pass
+            
+    except Exception as e:
+        logger.error(f"Error approving user auth: {e}")
+        bot.answer_callback_query(call.id, f"Error: {str(e)}", show_alert=True)
+
+def reject_user_auth(call):
+    """Reject user authentication"""
+    try:
+        user_id = int(call.data.split('_')[2])
+        admin_id = call.from_user.id
+        
+        if admin_id not in admin_ids:
+            bot.answer_callback_query(call.id, "⚠️ Admin permissions required.", show_alert=True)
+            return
+        
+        if user_id not in pending_auth_users:
+            bot.answer_callback_query(call.id, "User no longer pending.", show_alert=True)
+            return
+        
+        # Remove from pending
+        pending_auth_users.pop(user_id, None)
+        
+        # Notify user
+        try:
+            bot.send_message(user_id, f"""
+{EMOJI_HEADER}
+   ❌ ᴀᴄᴄᴇꜱꜱ ᴅᴇɴɪᴇᴅ
+{EMOJI_FOOTER}
+
+😔 ʏᴏᴜʀ ᴀᴄᴄᴇꜱꜱ ʀᴇQᴜᴇꜱᴛ ʜᴀꜱ ʙᴇᴇɴ ʀᴇᴊᴇᴄᴛᴇᴅ.
+
+📞 ᴄᴏɴᴛᴀᴄᴛ ᴛʜᴇ ᴏᴡɴᴇʀ ꜰᴏʀ ᴍᴏʀᴇ ɪɴꜰᴏ:
+   {YOUR_USERNAME}
+
+{DIVIDER}
+""")
+        except Exception as e:
+            logger.error(f"Failed to notify user {user_id}: {e}")
+        
+        bot.answer_callback_query(call.id, f"❌ User {user_id} rejected!")
+        
+        # Update the notification message
+        try:
+            bot.edit_message_text(
+                f"❌ ʀᴇᴊᴇᴄᴛᴇᴅ ᴜꜱᴇʀ `{user_id}`",
+                call.message.chat.id,
+                call.message.message_id,
+                parse_mode='Markdown'
+            )
+        except Exception:
+            pass
+            
+    except Exception as e:
+        logger.error(f"Error rejecting user auth: {e}")
+        bot.answer_callback_query(call.id, f"Error: {str(e)}", show_alert=True)
+
+def show_auth_requests(message_or_call):
+    """Show pending auth requests to admin"""
+    if isinstance(message_or_call, telebot.types.Message):
+        user_id = message_or_call.from_user.id
+        chat_id = message_or_call.chat.id
+        reply_func = lambda text, **kwargs: bot.reply_to(message_or_call, text, **kwargs)
+    else:
+        user_id = message_or_call.from_user.id
+        chat_id = message_or_call.message.chat.id
+        reply_func = lambda text, **kwargs: bot.send_message(chat_id, text, **kwargs)
+        bot.answer_callback_query(message_or_call.id)
+    
+    if user_id not in admin_ids:
+        reply_func("⚠️ Admin permissions required.")
+        return
+    
+    if not pending_auth_users:
+        reply_func(f"""
+{EMOJI_HEADER}
+   📭 ɴᴏ ᴘᴇɴᴅɪɴɢ ʀᴇQᴜᴇꜱᴛꜱ
+{EMOJI_FOOTER}
+
+ᴛʜᴇʀᴇ ᴀʀᴇ ᴄᴜʀʀᴇɴᴛʟʏ ɴᴏ ᴘᴇɴᴅɪɴɢ ᴀᴜᴛʜ ʀᴇQᴜᴇꜱᴛꜱ.
+
+{DIVIDER}
+""")
+        return
+    
+    text = f"""
+{EMOJI_HEADER}
+   🔐 ᴘᴇɴᴅɪɴɢ ᴀᴜᴛʜ ʀᴇQᴜᴇꜱᴛꜱ
+{EMOJI_FOOTER}
+
+📊 ᴛᴏᴛᴀʟ: {len(pending_auth_users)}
+
+{DIVIDER_THIN}
+"""
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    
+    for uid, data in pending_auth_users.items():
+        text += f"\n👤 {data['name']} (@{data['username'] or 'N/A'})\n🆔 `{uid}`\n"
+        markup.add(
+            types.InlineKeyboardButton(
+                f"✅ Approve {data['name']} ({uid})",
+                callback_data=f'auth_approve_{uid}'
+            )
+        )
+        markup.add(
+            types.InlineKeyboardButton(
+                f"❌ Reject {data['name']} ({uid})",
+                callback_data=f'auth_reject_{uid}'
+            )
+        )
+    
+    text += f"\n{DIVIDER}"
+    
+    reply_func(text, parse_mode='Markdown', reply_markup=markup)
+
+# --- Malware Detection Functions ---
 def get_file_type(file_content):
-    """Determine file type using magic numbers and mimetypes"""
-    # Common file signatures
     signatures = {
         b'\x7fELF': 'application/x-executable',
         b'MZ': 'application/x-dosexec',
@@ -295,22 +580,13 @@ def get_file_type(file_content):
         b'PK': 'application/zip',
         b'Rar!': 'application/x-rar',
     }
-    
     for signature, mime_type in signatures.items():
         if file_content.startswith(signature):
             return mime_type
-    
-    # Fallback to extension-based detection or return unknown
     return 'application/octet-stream'
 
 def is_suspicious_file(file_content, file_name):
-    """
-    Check if file contains malware signatures, encrypted content, or suspicious keywords.
-    Returns (is_suspicious, reason)
-    """
     file_lower = file_name.lower()
-    
-    # Check file extensions first (same as before)
     suspicious_extensions = ['.exe', '.dll', '.bat', '.cmd', '.scr', '.com', '.pif', '.application', '.gadget',
                             '.msi', '.msp', '.com', '.scr', '.hta', '.cpl', '.msc', '.jar', '.bin', '.deb', '.rpm',
                             '.apk', '.app', '.dmg', '.iso', '.img']
@@ -318,12 +594,10 @@ def is_suspicious_file(file_content, file_name):
     if any(file_lower.endswith(ext) for ext in suspicious_extensions):
         return True, f"Suspicious file extension: {file_name}"
     
-    # Check for malware signatures in file content
     for signature in MALWARE_SIGNATURES:
         if file_content.startswith(signature):
             return True, f"Malware signature detected: {signature}"
     
-    # Check for encrypted file indicators
     sample_size = min(len(file_content), 4096)
     file_sample = file_content[:sample_size]
     
@@ -331,13 +605,11 @@ def is_suspicious_file(file_content, file_name):
         if indicator in file_sample:
             return True, f"Encrypted file indicator: {indicator.decode('utf-8', errors='ignore')}"
     
-    # Check for suspicious keywords in first 8KB
     sample_text = file_sample.decode('utf-8', errors='ignore').lower()
     for keyword in SUSPICIOUS_KEYWORDS:
         if keyword.decode('utf-8').lower() in sample_text:
             return True, f"Suspicious keyword found: {keyword.decode('utf-8')}"
     
-    # Check file type using our custom function instead of magic
     try:
         file_type = get_file_type(file_sample)
         if file_type in ['application/x-dosexec', 'application/x-executable', 'application/x-mach-binary']:
@@ -348,30 +620,21 @@ def is_suspicious_file(file_content, file_name):
     return False, "File appears safe"
 
 def scan_file_for_malware(file_content, file_name, user_id):
-    """
-    Comprehensive malware scan for uploaded files.
-    Only owner can bypass these checks.
-    """
     if user_id == OWNER_ID:
         return True, "Owner bypassed security check"
-    
     is_suspicious, reason = is_suspicious_file(file_content, file_name)
-    
     if is_suspicious:
         logger.warning(f"🚨 Malware detected in {file_name} from user {user_id}: {reason}")
         return False, f"Security violation: {reason}"
-    
     return True, "File passed security check"
 
 # --- Helper Functions ---
 def get_user_folder(user_id):
-    """Get or create user's folder for storing files"""
     user_folder = os.path.join(UPLOAD_BOTS_DIR, str(user_id))
     os.makedirs(user_folder, exist_ok=True)
     return user_folder
 
 def get_user_file_limit(user_id):
-    """Get the file upload limit for a user"""
     if user_id == OWNER_ID: return OWNER_LIMIT
     if user_id in admin_ids: return ADMIN_LIMIT
     if user_id in user_subscriptions and user_subscriptions[user_id]['expiry'] > datetime.now():
@@ -379,11 +642,9 @@ def get_user_file_limit(user_id):
     return FREE_USER_LIMIT
 
 def get_user_file_count(user_id):
-    """Get the number of files uploaded by a user"""
     return len(user_files.get(user_id, []))
 
 def is_bot_running(script_owner_id, file_name):
-    """Check if a bot script is currently running for a specific user"""
     script_key = f"{script_owner_id}_{file_name}"
     script_info = bot_scripts.get(script_key)
     if script_info and script_info.get('process'):
@@ -416,7 +677,6 @@ def is_bot_running(script_owner_id, file_name):
     return False
 
 def kill_process_tree(process_info):
-    """Kill a process and all its children, ensuring log file is closed."""
     pid = None
     log_file_closed = False
     script_key = process_info.get('script_key', 'N/A')
@@ -492,975 +752,328 @@ def kill_process_tree(process_info):
         logger.error(f"❌ Unexpected error killing process tree for PID {pid or 'N/A'} ({script_key}): {e}", exc_info=True)
 
 # --- Automatic Package Installation & Script Running ---
-
 def attempt_install_pip(module_name, message):
-
-    package_name = TELEGRAM_MODULES.get(
-        module_name.lower(),
-        module_name
-    )
-
-    # PIL fix
+    package_name = TELEGRAM_MODULES.get(module_name.lower(), module_name)
     if module_name.lower() == "pil":
         package_name = "pillow"
-
     if package_name is None:
-        logger.info(
-            f"Module '{module_name}' is core. Skipping pip install."
-        )
+        logger.info(f"Module '{module_name}' is core. Skipping pip install.")
         return False
-
     try:
-
-        bot.reply_to(
-            message,
-            f"🐍 Module `{module_name}` not found. Installing `{package_name}`...",
-            parse_mode='Markdown'
-        )
-
-        command = [
-            sys.executable,
-            '-m',
-            'pip',
-            'install',
-            package_name
-        ]
-
+        bot.reply_to(message, f"🐍 Module `{module_name}` not found. Installing `{package_name}`...", parse_mode='Markdown')
+        command = [sys.executable, '-m', 'pip', 'install', package_name]
         logger.info(f"Running install: {' '.join(command)}")
-
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            check=False,
-            encoding='utf-8',
-            errors='replace',
-            env={**os.environ, "PYTHONIOENCODING": "utf-8"}
-        )
-
+        result = subprocess.run(command, capture_output=True, text=True, check=False, encoding='utf-8', errors='replace',
+                              env={**os.environ, "PYTHONIOENCODING": "utf-8"})
         if result.returncode == 0:
-
-            logger.info(
-                f"Installed {package_name}. Output:\n{result.stdout}"
-            )
-
-            bot.reply_to(
-                message,
-                f"✅ Package `{package_name}` (for `{module_name}`) installed.",
-                parse_mode='Markdown'
-            )
-
+            logger.info(f"Installed {package_name}. Output:\n{result.stdout}")
+            bot.reply_to(message, f"✅ Package `{package_name}` (for `{module_name}`) installed.", parse_mode='Markdown')
             return True
-
         else:
-
-            error_msg = (
-                f"❌ Failed to install `{package_name}` "
-                f"for `{module_name}`.\n"
-                f"Log:\n```\n"
-                f"{result.stderr or result.stdout}\n```"
-            )
-
+            error_msg = f"❌ Failed to install `{package_name}` for `{module_name}`.\nLog:\n```\n{result.stderr or result.stdout}\n```"
             logger.error(error_msg)
-
             if len(error_msg) > 4000:
-                error_msg = (
-                    error_msg[:4000] +
-                    "\n... (Log truncated)"
-                )
-
-            bot.reply_to(
-                message,
-                error_msg,
-                parse_mode='Markdown'
-            )
-
+                error_msg = error_msg[:4000] + "\n... (Log truncated)"
+            bot.reply_to(message, error_msg, parse_mode='Markdown')
             return False
-
     except Exception as e:
-
-        error_msg = (
-            f"❌ Error installing `{package_name}`: {str(e)}"
-        )
-
+        error_msg = f"❌ Error installing `{package_name}`: {str(e)}"
         logger.error(error_msg, exc_info=True)
-
         bot.reply_to(message, error_msg)
-
         return False
 
 def attempt_install_npm(module_name, user_folder, message):
-
     try:
-
-        bot.reply_to(
-            message,
-            f"🟠 Node package `{module_name}` not found. Installing locally...",
-            parse_mode='Markdown'
-        )
-
-        command = [
-            'npm',
-            'install',
-            module_name
-        ]
-
-        logger.info(
-            f"Running npm install: {' '.join(command)} in {user_folder}"
-        )
-
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            check=False,
-            cwd=user_folder,
-            encoding='utf-8',
-            errors='replace'
-        )
-
+        bot.reply_to(message, f"🟠 Node package `{module_name}` not found. Installing locally...", parse_mode='Markdown')
+        command = ['npm', 'install', module_name]
+        logger.info(f"Running npm install: {' '.join(command)} in {user_folder}")
+        result = subprocess.run(command, capture_output=True, text=True, check=False, cwd=user_folder,
+                              encoding='utf-8', errors='replace')
         if result.returncode == 0:
-
-            logger.info(
-                f"Installed {module_name}. Output:\n{result.stdout}"
-            )
-
-            bot.reply_to(
-                message,
-                f"✅ Node package `{module_name}` installed locally.",
-                parse_mode='Markdown'
-            )
-
+            logger.info(f"Installed {module_name}. Output:\n{result.stdout}")
+            bot.reply_to(message, f"✅ Node package `{module_name}` installed locally.", parse_mode='Markdown')
             return True
-
         else:
-
-            error_msg = (
-                f"❌ Failed to install Node package `{module_name}`.\n"
-                f"Log:\n```\n"
-                f"{result.stderr or result.stdout}\n```"
-            )
-
+            error_msg = f"❌ Failed to install Node package `{module_name}`.\nLog:\n```\n{result.stderr or result.stdout}\n```"
             logger.error(error_msg)
-
             if len(error_msg) > 4000:
-                error_msg = (
-                    error_msg[:4000] +
-                    "\n... (Log truncated)"
-                )
-
-            bot.reply_to(
-                message,
-                error_msg,
-                parse_mode='Markdown'
-            )
-
+                error_msg = error_msg[:4000] + "\n... (Log truncated)"
+            bot.reply_to(message, error_msg, parse_mode='Markdown')
             return False
-
     except FileNotFoundError:
-
-        error_msg = (
-            "❌ Error: 'npm' not found. "
-            "Ensure Node.js/npm are installed and in PATH."
-        )
-
+        error_msg = "❌ Error: 'npm' not found. Ensure Node.js/npm are installed and in PATH."
         logger.error(error_msg)
-
         bot.reply_to(message, error_msg)
-
         return False
-
     except Exception as e:
-
-        error_msg = (
-            f"❌ Error installing Node package "
-            f"`{module_name}`: {str(e)}"
-        )
-
+        error_msg = f"❌ Error installing Node package `{module_name}`: {str(e)}"
         logger.error(error_msg, exc_info=True)
-
         bot.reply_to(message, error_msg)
-
         return False
 
 def run_script(script_path, script_owner_id, user_folder, file_name, message_obj_for_reply, attempt=1):
-    """Run Python script safely with UTF-8 support"""
-
     max_attempts = 2
-
     if attempt > max_attempts:
-        bot.reply_to(
-            message_obj_for_reply,
-            f"❌ Failed to run '{file_name}' after {max_attempts} attempts."
-        )
+        bot.reply_to(message_obj_for_reply, f"❌ Failed to run '{file_name}' after {max_attempts} attempts.")
         return
-
     script_key = f"{script_owner_id}_{file_name}"
-
-    logger.info(
-        f"Attempt {attempt} to run Python script: "
-        f"{script_path} (Key: {script_key})"
-    )
+    logger.info(f"Attempt {attempt} to run Python script: {script_path} (Key: {script_key})")
 
     try:
-        # ================= FILE EXISTS CHECK =================
-
         if not os.path.exists(script_path):
-
-            bot.reply_to(
-                message_obj_for_reply,
-                f"❌ Script '{file_name}' not found!"
-            )
-
+            bot.reply_to(message_obj_for_reply, f"❌ Script '{file_name}' not found!")
             logger.error(f"Script not found: {script_path}")
-
             if script_owner_id in user_files:
-                user_files[script_owner_id] = [
-                    f for f in user_files.get(script_owner_id, [])
-                    if f[0] != file_name
-                ]
-
+                user_files[script_owner_id] = [f for f in user_files.get(script_owner_id, []) if f[0] != file_name]
             remove_user_file_db(script_owner_id, file_name)
             return
 
-        # ================= PRE CHECK =================
-
         if attempt == 1:
-
             check_command = [sys.executable, script_path]
-
-            logger.info(
-                f"Running Python pre-check: {' '.join(check_command)}"
-            )
-
+            logger.info(f"Running Python pre-check: {' '.join(check_command)}")
             check_proc = None
-
             try:
-
-                check_proc = subprocess.Popen(
-                    check_command,
-                    cwd=user_folder,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    encoding='utf-8',
-                    errors='replace',
-                    env={
-                        **os.environ,
-                        "PYTHONIOENCODING": "utf-8"
-                    }
-                )
-
+                check_proc = subprocess.Popen(check_command, cwd=user_folder, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                            text=True, encoding='utf-8', errors='replace',
+                                            env={**os.environ, "PYTHONIOENCODING": "utf-8"})
                 stdout, stderr = check_proc.communicate(timeout=5)
-
                 return_code = check_proc.returncode
-
-                logger.info(
-                    f"Python Pre-check RC: {return_code} | "
-                    f"STDERR: {stderr[:200]}"
-                )
-
-                # ================= MODULE CHECK =================
+                logger.info(f"Python Pre-check RC: {return_code} | STDERR: {stderr[:200]}")
 
                 if return_code != 0 and stderr:
-
-                    match_py = re.search(
-                        r"ModuleNotFoundError: No module named '(.+?)'",
-                        stderr
-                    )
-
+                    match_py = re.search(r"ModuleNotFoundError: No module named '(.+?)'", stderr)
                     if match_py:
-
                         module_name = match_py.group(1).strip()
-
-                        logger.info(
-                            f"Detected missing Python module: {module_name}"
-                        )
-
-                        if attempt_install_pip(
-                            module_name,
-                            message_obj_for_reply
-                        ):
-
-                            bot.reply_to(
-                                message_obj_for_reply,
-                                f"🔄 Retrying '{file_name}'..."
-                            )
-
+                        logger.info(f"Detected missing Python module: {module_name}")
+                        if attempt_install_pip(module_name, message_obj_for_reply):
+                            bot.reply_to(message_obj_for_reply, f"🔄 Retrying '{file_name}'...")
                             time.sleep(2)
-
-                            threading.Thread(
-                                target=run_script,
-                                args=(
-                                    script_path,
-                                    script_owner_id,
-                                    user_folder,
-                                    file_name,
-                                    message_obj_for_reply,
-                                    attempt + 1
-                                )
-                            ).start()
-
+                            threading.Thread(target=run_script, args=(script_path, script_owner_id, user_folder,
+                                                                     file_name, message_obj_for_reply, attempt + 1)).start()
                             return
-
                         else:
-
-                            bot.reply_to(
-                                message_obj_for_reply,
-                                f"❌ Install failed for '{module_name}'"
-                            )
-
+                            bot.reply_to(message_obj_for_reply, f"❌ Install failed for '{module_name}'")
                             return
-
                     else:
-
                         error_summary = stderr[:500]
-
-                        bot.reply_to(
-                            message_obj_for_reply,
-                            f"❌ Error in script pre-check:\n```{error_summary}```",
-                            parse_mode='Markdown'
-                        )
-
+                        bot.reply_to(message_obj_for_reply, f"❌ Error in script pre-check:\n```{error_summary}```", parse_mode='Markdown')
                         return
-
             except subprocess.TimeoutExpired:
-
-                logger.info(
-                    "Pre-check timeout -> imports likely OK"
-                )
-
+                logger.info("Pre-check timeout -> imports likely OK")
                 if check_proc and check_proc.poll() is None:
                     check_proc.kill()
                     check_proc.communicate()
-
             except FileNotFoundError:
-
-                logger.error(
-                    f"Python interpreter not found: {sys.executable}"
-                )
-
-                bot.reply_to(
-                    message_obj_for_reply,
-                    f"❌ Python interpreter not found."
-                )
-
+                logger.error(f"Python interpreter not found: {sys.executable}")
+                bot.reply_to(message_obj_for_reply, f"❌ Python interpreter not found.")
                 return
-
             except Exception as e:
-
-                logger.error(
-                    f"Pre-check error: {e}",
-                    exc_info=True
-                )
-
-                bot.reply_to(
-                    message_obj_for_reply,
-                    f"❌ Pre-check error:\n{e}"
-                )
-
+                logger.error(f"Pre-check error: {e}", exc_info=True)
+                bot.reply_to(message_obj_for_reply, f"❌ Pre-check error:\n{e}")
                 return
-
             finally:
-
                 if check_proc and check_proc.poll() is None:
-
-                    logger.warning(
-                        f"Killing stuck pre-check process {check_proc.pid}"
-                    )
-
+                    logger.warning(f"Killing stuck pre-check process {check_proc.pid}")
                     check_proc.kill()
                     check_proc.communicate()
 
-        # ================= START LONG RUN =================
-
-        logger.info(
-            f"Starting long-running Python process for {script_key}"
-        )
-
-        log_file_path = os.path.join(
-            user_folder,
-            f"{os.path.splitext(file_name)[0]}.log"
-        )
-
+        logger.info(f"Starting long-running Python process for {script_key}")
+        log_file_path = os.path.join(user_folder, f"{os.path.splitext(file_name)[0]}.log")
         log_file = None
         process = None
-
         try:
-
-            log_file = open(
-                log_file_path,
-                'w',
-                encoding='utf-8',
-                errors='replace'
-            )
-
+            log_file = open(log_file_path, 'w', encoding='utf-8', errors='replace')
         except Exception as e:
-
-            logger.error(
-                f"Failed to open log file: {e}",
-                exc_info=True
-            )
-
-            bot.reply_to(
-                message_obj_for_reply,
-                f"❌ Failed to open log file:\n{e}"
-            )
-
+            logger.error(f"Failed to open log file: {e}", exc_info=True)
+            bot.reply_to(message_obj_for_reply, f"❌ Failed to open log file:\n{e}")
             return
-
         try:
-
             startupinfo = None
             creationflags = 0
-
             if os.name == 'nt':
-
                 startupinfo = subprocess.STARTUPINFO()
-
-                startupinfo.dwFlags |= (
-                    subprocess.STARTF_USESHOWWINDOW
-                )
-
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                 startupinfo.wShowWindow = subprocess.SW_HIDE
-
-            process = subprocess.Popen(
-                [sys.executable, script_path],
-
-                cwd=user_folder,
-
-                stdout=log_file,
-                stderr=log_file,
-
-                stdin=subprocess.PIPE,
-
-                startupinfo=startupinfo,
-                creationflags=creationflags,
-
-                text=True,
-
-                encoding='utf-8',
-                errors='replace',
-
-                env={
-                    **os.environ,
-                    "PYTHONIOENCODING": "utf-8"
-                }
-            )
-
-            logger.info(
-                f"Started Python process {process.pid} "
-                f"for {script_key}"
-            )
-
+            process = subprocess.Popen([sys.executable, script_path], cwd=user_folder, stdout=log_file, stderr=log_file,
+                                     stdin=subprocess.PIPE, startupinfo=startupinfo, creationflags=creationflags,
+                                     text=True, encoding='utf-8', errors='replace',
+                                     env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+            logger.info(f"Started Python process {process.pid} for {script_key}")
             bot_scripts[script_key] = {
-                'process': process,
-                'log_file': log_file,
-                'file_name': file_name,
-                'chat_id': message_obj_for_reply.chat.id,
-                'script_owner_id': script_owner_id,
-                'start_time': datetime.now(),
-                'user_folder': user_folder,
-                'type': 'py',
-                'script_key': script_key
+                'process': process, 'log_file': log_file, 'file_name': file_name,
+                'chat_id': message_obj_for_reply.chat.id, 'script_owner_id': script_owner_id,
+                'start_time': datetime.now(), 'user_folder': user_folder, 'type': 'py', 'script_key': script_key
             }
-
-            bot.reply_to(
-                message_obj_for_reply,
-                f"✅ Python script '{file_name}' started!\n"
-                f"🆔 PID: {process.pid}"
-            )
-
+            bot.reply_to(message_obj_for_reply, f"✅ Python script '{file_name}' started!\n🆔 PID: {process.pid}")
         except FileNotFoundError:
-
-            logger.error(
-                f"Python interpreter not found for long run"
-            )
-
-            bot.reply_to(
-                message_obj_for_reply,
-                "❌ Python interpreter not found."
-            )
-
+            logger.error(f"Python interpreter not found for long run")
+            bot.reply_to(message_obj_for_reply, "❌ Python interpreter not found.")
             if log_file and not log_file.closed:
                 log_file.close()
-
             if script_key in bot_scripts:
                 del bot_scripts[script_key]
-
         except Exception as e:
-
             if log_file and not log_file.closed:
                 log_file.close()
-
-            logger.error(
-                f"Error starting script: {e}",
-                exc_info=True
-            )
-
-            bot.reply_to(
-                message_obj_for_reply,
-                f"❌ Failed to start script:\n{e}"
-            )
-
+            logger.error(f"Error starting script: {e}", exc_info=True)
+            bot.reply_to(message_obj_for_reply, f"❌ Failed to start script:\n{e}")
             if process and process.poll() is None:
-
-                kill_process_tree({
-                    'process': process,
-                    'log_file': log_file,
-                    'script_key': script_key
-                })
-
+                kill_process_tree({'process': process, 'log_file': log_file, 'script_key': script_key})
             if script_key in bot_scripts:
                 del bot_scripts[script_key]
-
     except Exception as e:
-
-        logger.error(
-            f"Unexpected run_script error: {e}",
-            exc_info=True
-        )
-
-        bot.reply_to(
-            message_obj_for_reply,
-            f"❌ Unexpected error:\n{e}"
-        )
-
+        logger.error(f"Unexpected run_script error: {e}", exc_info=True)
+        bot.reply_to(message_obj_for_reply, f"❌ Unexpected error:\n{e}")
         if script_key in bot_scripts:
-
-            kill_process_tree(
-                bot_scripts[script_key]
-            )
-
+            kill_process_tree(bot_scripts[script_key])
             del bot_scripts[script_key]
 
 def run_js_script(script_path, script_owner_id, user_folder, file_name, message_obj_for_reply, attempt=1):
-    """Run JS script safely with UTF-8 support"""
-
     max_attempts = 2
-
     if attempt > max_attempts:
-        bot.reply_to(
-            message_obj_for_reply,
-            f"❌ Failed to run '{file_name}' after {max_attempts} attempts."
-        )
+        bot.reply_to(message_obj_for_reply, f"❌ Failed to run '{file_name}' after {max_attempts} attempts.")
         return
-
     script_key = f"{script_owner_id}_{file_name}"
-
-    logger.info(
-        f"Attempt {attempt} to run JS script: "
-        f"{script_path} (Key: {script_key})"
-    )
+    logger.info(f"Attempt {attempt} to run JS script: {script_path} (Key: {script_key})")
 
     try:
-
-        # ================= FILE EXISTS CHECK =================
-
         if not os.path.exists(script_path):
-
-            bot.reply_to(
-                message_obj_for_reply,
-                f"❌ Script '{file_name}' not found!"
-            )
-
+            bot.reply_to(message_obj_for_reply, f"❌ Script '{file_name}' not found!")
             logger.error(f"JS Script not found: {script_path}")
-
             if script_owner_id in user_files:
-                user_files[script_owner_id] = [
-                    f for f in user_files.get(script_owner_id, [])
-                    if f[0] != file_name
-                ]
-
+                user_files[script_owner_id] = [f for f in user_files.get(script_owner_id, []) if f[0] != file_name]
             remove_user_file_db(script_owner_id, file_name)
-
             return
-
-        # ================= PRE CHECK =================
 
         if attempt == 1:
-
             check_command = ['node', script_path]
-
-            logger.info(
-                f"Running JS pre-check: {' '.join(check_command)}"
-            )
-
+            logger.info(f"Running JS pre-check: {' '.join(check_command)}")
             check_proc = None
-
             try:
-
-                check_proc = subprocess.Popen(
-                    check_command,
-                    cwd=user_folder,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    encoding='utf-8',
-                    errors='replace',
-                    env={
-                        **os.environ,
-                        "PYTHONIOENCODING": "utf-8"
-                    }
-                )
-
+                check_proc = subprocess.Popen(check_command, cwd=user_folder, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                            text=True, encoding='utf-8', errors='replace',
+                                            env={**os.environ, "PYTHONIOENCODING": "utf-8"})
                 stdout, stderr = check_proc.communicate(timeout=5)
-
                 return_code = check_proc.returncode
-
-                logger.info(
-                    f"JS Pre-check RC: {return_code} | "
-                    f"STDERR: {stderr[:200]}"
-                )
-
-                # ================= MODULE CHECK =================
+                logger.info(f"JS Pre-check RC: {return_code} | STDERR: {stderr[:200]}")
 
                 if return_code != 0 and stderr:
-
-                    match_js = re.search(
-                        r"Cannot find module '(.+?)'",
-                        stderr
-                    )
-
+                    match_js = re.search(r"Cannot find module '(.+?)'", stderr)
                     if match_js:
-
                         module_name = match_js.group(1).strip()
-
-                        # Skip relative paths
                         if not module_name.startswith('.') and not module_name.startswith('/'):
-
-                            logger.info(
-                                f"Detected missing Node module: {module_name}"
-                            )
-
-                            if attempt_install_npm(
-                                module_name,
-                                user_folder,
-                                message_obj_for_reply
-                            ):
-
-                                bot.reply_to(
-                                    message_obj_for_reply,
-                                    f"🔄 Retrying '{file_name}'..."
-                                )
-
+                            logger.info(f"Detected missing Node module: {module_name}")
+                            if attempt_install_npm(module_name, user_folder, message_obj_for_reply):
+                                bot.reply_to(message_obj_for_reply, f"🔄 Retrying '{file_name}'...")
                                 time.sleep(2)
-
-                                threading.Thread(
-                                    target=run_js_script,
-                                    args=(
-                                        script_path,
-                                        script_owner_id,
-                                        user_folder,
-                                        file_name,
-                                        message_obj_for_reply,
-                                        attempt + 1
-                                    )
-                                ).start()
-
+                                threading.Thread(target=run_js_script, args=(script_path, script_owner_id, user_folder,
+                                                                             file_name, message_obj_for_reply, attempt + 1)).start()
                                 return
-
                             else:
-
-                                bot.reply_to(
-                                    message_obj_for_reply,
-                                    f"❌ Failed to install '{module_name}'"
-                                )
-
+                                bot.reply_to(message_obj_for_reply, f"❌ Failed to install '{module_name}'")
                                 return
-
                     error_summary = stderr[:500]
-
-                    bot.reply_to(
-                        message_obj_for_reply,
-                        f"❌ JS Script Error:\n```{error_summary}```",
-                        parse_mode='Markdown'
-                    )
-
+                    bot.reply_to(message_obj_for_reply, f"❌ JS Script Error:\n```{error_summary}```", parse_mode='Markdown')
                     return
-
             except subprocess.TimeoutExpired:
-
-                logger.info(
-                    "JS Pre-check timeout -> imports likely OK"
-                )
-
+                logger.info("JS Pre-check timeout -> imports likely OK")
                 if check_proc and check_proc.poll() is None:
                     check_proc.kill()
                     check_proc.communicate()
-
             except FileNotFoundError:
-
                 logger.error("Node.js not found")
-
-                bot.reply_to(
-                    message_obj_for_reply,
-                    "❌ Node.js not installed."
-                )
-
+                bot.reply_to(message_obj_for_reply, "❌ Node.js not installed.")
                 return
-
             except Exception as e:
-
-                logger.error(
-                    f"JS pre-check error: {e}",
-                    exc_info=True
-                )
-
-                bot.reply_to(
-                    message_obj_for_reply,
-                    f"❌ JS pre-check error:\n{e}"
-                )
-
+                logger.error(f"JS pre-check error: {e}", exc_info=True)
+                bot.reply_to(message_obj_for_reply, f"❌ JS pre-check error:\n{e}")
                 return
-
             finally:
-
                 if check_proc and check_proc.poll() is None:
-
-                    logger.warning(
-                        f"Killing stuck JS check process {check_proc.pid}"
-                    )
-
+                    logger.warning(f"Killing stuck JS check process {check_proc.pid}")
                     check_proc.kill()
                     check_proc.communicate()
 
-        # ================= START LONG RUN =================
-
-        logger.info(
-            f"Starting long-running JS process for {script_key}"
-        )
-
-        log_file_path = os.path.join(
-            user_folder,
-            f"{os.path.splitext(file_name)[0]}.log"
-        )
-
+        logger.info(f"Starting long-running JS process for {script_key}")
+        log_file_path = os.path.join(user_folder, f"{os.path.splitext(file_name)[0]}.log")
         log_file = None
         process = None
-
         try:
-
-            log_file = open(
-                log_file_path,
-                'w',
-                encoding='utf-8',
-                errors='replace'
-            )
-
+            log_file = open(log_file_path, 'w', encoding='utf-8', errors='replace')
         except Exception as e:
-
-            logger.error(
-                f"Failed to open JS log file: {e}",
-                exc_info=True
-            )
-
-            bot.reply_to(
-                message_obj_for_reply,
-                f"❌ Failed to open log file:\n{e}"
-            )
-
+            logger.error(f"Failed to open JS log file: {e}", exc_info=True)
+            bot.reply_to(message_obj_for_reply, f"❌ Failed to open log file:\n{e}")
             return
-
         try:
-
             startupinfo = None
             creationflags = 0
-
             if os.name == 'nt':
-
                 startupinfo = subprocess.STARTUPINFO()
-
-                startupinfo.dwFlags |= (
-                    subprocess.STARTF_USESHOWWINDOW
-                )
-
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                 startupinfo.wShowWindow = subprocess.SW_HIDE
-
-            process = subprocess.Popen(
-                ['node', script_path],
-
-                cwd=user_folder,
-
-                stdout=log_file,
-                stderr=log_file,
-
-                stdin=subprocess.PIPE,
-
-                startupinfo=startupinfo,
-                creationflags=creationflags,
-
-                text=True,
-
-                encoding='utf-8',
-                errors='replace',
-
-                env={
-                    **os.environ,
-                    "PYTHONIOENCODING": "utf-8"
-                }
-            )
-
-            logger.info(
-                f"Started JS process {process.pid} "
-                f"for {script_key}"
-            )
-
+            process = subprocess.Popen(['node', script_path], cwd=user_folder, stdout=log_file, stderr=log_file,
+                                     stdin=subprocess.PIPE, startupinfo=startupinfo, creationflags=creationflags,
+                                     text=True, encoding='utf-8', errors='replace',
+                                     env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+            logger.info(f"Started JS process {process.pid} for {script_key}")
             bot_scripts[script_key] = {
-                'process': process,
-                'log_file': log_file,
-                'file_name': file_name,
-                'chat_id': message_obj_for_reply.chat.id,
-                'script_owner_id': script_owner_id,
-                'start_time': datetime.now(),
-                'user_folder': user_folder,
-                'type': 'js',
-                'script_key': script_key
+                'process': process, 'log_file': log_file, 'file_name': file_name,
+                'chat_id': message_obj_for_reply.chat.id, 'script_owner_id': script_owner_id,
+                'start_time': datetime.now(), 'user_folder': user_folder, 'type': 'js', 'script_key': script_key
             }
-
-            bot.reply_to(
-                message_obj_for_reply,
-                f"✅ JS script '{file_name}' started!\n"
-                f"🆔 PID: {process.pid}"
-            )
-
+            bot.reply_to(message_obj_for_reply, f"✅ JS script '{file_name}' started!\n🆔 PID: {process.pid}")
         except FileNotFoundError:
-
             logger.error("Node.js not found for long run")
-
-            bot.reply_to(
-                message_obj_for_reply,
-                "❌ Node.js not installed."
-            )
-
+            bot.reply_to(message_obj_for_reply, "❌ Node.js not installed.")
             if log_file and not log_file.closed:
                 log_file.close()
-
             if script_key in bot_scripts:
                 del bot_scripts[script_key]
-
         except Exception as e:
-
             if log_file and not log_file.closed:
                 log_file.close()
-
-            logger.error(
-                f"Error starting JS script: {e}",
-                exc_info=True
-            )
-
-            bot.reply_to(
-                message_obj_for_reply,
-                f"❌ Failed to start JS script:\n{e}"
-            )
-
+            logger.error(f"Error starting JS script: {e}", exc_info=True)
+            bot.reply_to(message_obj_for_reply, f"❌ Failed to start JS script:\n{e}")
             if process and process.poll() is None:
-
-                kill_process_tree({
-                    'process': process,
-                    'log_file': log_file,
-                    'script_key': script_key
-                })
-
+                kill_process_tree({'process': process, 'log_file': log_file, 'script_key': script_key})
             if script_key in bot_scripts:
                 del bot_scripts[script_key]
-
     except Exception as e:
-
-        logger.error(
-            f"Unexpected run_js_script error: {e}",
-            exc_info=True
-        )
-
-        bot.reply_to(
-            message_obj_for_reply,
-            f"❌ Unexpected JS error:\n{e}"
-        )
-
+        logger.error(f"Unexpected run_js_script error: {e}", exc_info=True)
+        bot.reply_to(message_obj_for_reply, f"❌ Unexpected JS error:\n{e}")
         if script_key in bot_scripts:
-
-            kill_process_tree(
-                bot_scripts[script_key]
-            )
-
+            kill_process_tree(bot_scripts[script_key])
             del bot_scripts[script_key]
 
 # --- Map Telegram import names to actual PyPI package names ---
 TELEGRAM_MODULES = {
-    'telebot': 'pyTelegramBotAPI',
-    'telegram': 'python-telegram-bot',
-    'python_telegram_bot': 'python-telegram-bot',
-    'aiogram': 'aiogram',
-    'pyrogram': 'pyrogram',
-    'telethon': 'telethon',
-    'telethon.sync': 'telethon',
-    'from telethon.sync import telegramclient': 'telethon',
-    'telepot': 'telepot',
-    'pytg': 'pytg',
-    'tgcrypto': 'tgcrypto',
-    'telegram_upload': 'telegram-upload',
-    'telegram_send': 'telegram-send',
-    'telegram_text': 'telegram-text',
-    'mtproto': 'telegram-mtproto',
-    'tl': 'telethon',
-    'telegram_utils': 'telegram-utils',
-    'telegram_logger': 'telegram-logger',
-    'telegram_handlers': 'python-telegram-handlers',
-    'telegram_redis': 'telegram-redis',
-    'telegram_sqlalchemy': 'telegram-sqlalchemy',
-    'telegram_payment': 'telegram-payment',
-    'telegram_shop': 'telegram-shop-sdk',
-    'pytest_telegram': 'pytest-telegram',
-    'telegram_debug': 'telegram-debug',
-    'telegram_scraper': 'telegram-scraper',
-    'telegram_analytics': 'telegram-analytics',
-    'telegram_nlp': 'telegram-nlp-toolkit',
-    'telegram_ai': 'telegram-ai',
-    'telegram_api': 'telegram-api-client',
-    'telegram_web': 'telegram-web-integration',
-    'telegram_games': 'telegram-games',
-    'telegram_quiz': 'telegram-quiz-bot',
-    'telegram_ffmpeg': 'telegram-ffmpeg',
-    'telegram_media': 'telegram-media-utils',
-    'telegram_2fa': 'telegram-twofa',
-    'telegram_crypto': 'telegram-crypto-bot',
-    'telegram_i18n': 'telegram-i18n',
-    'telegram_translate': 'telegram-translate',
-    'bs4': 'beautifulsoup4',
-    'requests': 'requests',
-    'pillow': 'Pillow',
-    'cv2': 'opencv-python',
-    'yaml': 'PyYAML',
-    'dotenv': 'python-dotenv',
-    'dateutil': 'python-dateutil',
-    'pandas': 'pandas',
-    'numpy': 'numpy',
-    'flask': 'Flask',
-    'django': 'Django',
-    'sqlalchemy': 'SQLAlchemy',
-    'asyncio': None,
-    'json': None,
-    'datetime': None,
-    'os': None,
-    'sys': None,
-    're': None,
-    'time': None,
-    'math': None,
-    'random': None,
-    'logging': None,
-    'threading': None,
-    'subprocess': None,
-    'zipfile': None,
-    'tempfile': None,
-    'shutil': None,
-    'sqlite3': None,
-    'psutil': 'psutil',
-    'atexit': None
+    'telebot': 'pyTelegramBotAPI', 'telegram': 'python-telegram-bot', 'python_telegram_bot': 'python-telegram-bot',
+    'aiogram': 'aiogram', 'pyrogram': 'pyrogram', 'telethon': 'telethon', 'telethon.sync': 'telethon',
+    'from telethon.sync import telegramclient': 'telethon', 'telepot': 'telepot', 'pytg': 'pytg',
+    'tgcrypto': 'tgcrypto', 'telegram_upload': 'telegram-upload', 'telegram_send': 'telegram-send',
+    'telegram_text': 'telegram-text', 'mtproto': 'telegram-mtproto', 'tl': 'telethon',
+    'telegram_utils': 'telegram-utils', 'telegram_logger': 'telegram-logger',
+    'telegram_handlers': 'python-telegram-handlers', 'telegram_redis': 'telegram-redis',
+    'telegram_sqlalchemy': 'telegram-sqlalchemy', 'telegram_payment': 'telegram-payment',
+    'telegram_shop': 'telegram-shop-sdk', 'pytest_telegram': 'pytest-telegram',
+    'telegram_debug': 'telegram-debug', 'telegram_scraper': 'telegram-scraper',
+    'telegram_analytics': 'telegram-analytics', 'telegram_nlp': 'telegram-nlp-toolkit',
+    'telegram_ai': 'telegram-ai', 'telegram_api': 'telegram-api-client',
+    'telegram_web': 'telegram-web-integration', 'telegram_games': 'telegram-games',
+    'telegram_quiz': 'telegram-quiz-bot', 'telegram_ffmpeg': 'telegram-ffmpeg',
+    'telegram_media': 'telegram-media-utils', 'telegram_2fa': 'telegram-twofa',
+    'telegram_crypto': 'telegram-crypto-bot', 'telegram_i18n': 'telegram-i18n',
+    'telegram_translate': 'telegram-translate', 'bs4': 'beautifulsoup4', 'requests': 'requests',
+    'pillow': 'Pillow', 'cv2': 'opencv-python', 'yaml': 'PyYAML', 'dotenv': 'python-dotenv',
+    'dateutil': 'python-dateutil', 'pandas': 'pandas', 'numpy': 'numpy', 'flask': 'Flask',
+    'django': 'Django', 'sqlalchemy': 'SQLAlchemy', 'asyncio': None, 'json': None,
+    'datetime': None, 'os': None, 'sys': None, 're': None, 'time': None, 'math': None,
+    'random': None, 'logging': None, 'threading': None, 'subprocess': None, 'zipfile': None,
+    'tempfile': None, 'shutil': None, 'sqlite3': None, 'psutil': 'psutil', 'atexit': None
 }
-# --- End Automatic Package Installation & Script Running ---
 
 # --- Database Operations ---
-DB_LOCK = threading.Lock() 
+DB_LOCK = threading.Lock()
 
 def save_user_file(user_id, file_name, file_type='py'):
     with DB_LOCK:
@@ -1494,7 +1107,7 @@ def remove_user_file_db(user_id, file_name):
         finally: conn.close()
 
 def add_active_user(user_id):
-    active_users.add(user_id) 
+    active_users.add(user_id)
     with DB_LOCK:
         conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
         c = conn.cursor()
@@ -1540,7 +1153,7 @@ def add_admin_db(admin_id):
         try:
             c.execute('INSERT OR IGNORE INTO admins (user_id) VALUES (?)', (admin_id,))
             conn.commit()
-            admin_ids.add(admin_id) 
+            admin_ids.add(admin_id)
             logger.info(f"Added admin {admin_id} to DB")
         except sqlite3.Error as e: logger.error(f"❌ SQLite error adding admin {admin_id}: {e}")
         except Exception as e: logger.error(f"❌ Unexpected error adding admin {admin_id}: {e}", exc_info=True)
@@ -1549,7 +1162,7 @@ def add_admin_db(admin_id):
 def remove_admin_db(admin_id):
     if admin_id == OWNER_ID:
         logger.warning("Attempted to remove OWNER_ID from admins.")
-        return False 
+        return False
     with DB_LOCK:
         conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
         c = conn.cursor()
@@ -1559,30 +1172,33 @@ def remove_admin_db(admin_id):
             if c.fetchone():
                 c.execute('DELETE FROM admins WHERE user_id = ?', (admin_id,))
                 conn.commit()
-                removed = c.rowcount > 0 
-                if removed: admin_ids.discard(admin_id); logger.info(f"Removed admin {admin_id} from DB")
-                else: logger.warning(f"Admin {admin_id} found but delete affected 0 rows.")
+                removed = c.rowcount > 0
+                if removed:
+                    admin_ids.discard(admin_id)
+                    logger.info(f"Removed admin {admin_id} from DB")
+                else:
+                    logger.warning(f"Admin {admin_id} found but delete affected 0 rows.")
             else:
                 logger.warning(f"Admin {admin_id} not found in DB.")
                 admin_ids.discard(admin_id)
             return removed
-        except sqlite3.Error as e: logger.error(f"❌ SQLite error removing admin {admin_id}: {e}"); return False
-        except Exception as e: logger.error(f"❌ Unexpected error removing admin {admin_id}: {e}", exc_info=True); return False
+        except sqlite3.Error as e:
+            logger.error(f"❌ SQLite error removing admin {admin_id}: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Unexpected error removing admin {admin_id}: {e}", exc_info=True)
+            return False
         finally: conn.close()
-# --- End Database Operations ---
 
 # --- FILE APPROVAL SYSTEM FUNCTIONS ---
-
 def save_pending_file_to_db(user_id, file_name, file_path, file_type, message_id):
-    """Save pending file to database"""
     with DB_LOCK:
         conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
         c = conn.cursor()
         try:
             timestamp = datetime.now().isoformat()
             c.execute('''INSERT INTO pending_files (user_id, file_name, file_path, file_type, timestamp, message_id, status)
-                         VALUES (?, ?, ?, ?, ?, ?, 'pending')''',
-                      (user_id, file_name, file_path, file_type, timestamp, message_id))
+                         VALUES (?, ?, ?, ?, ?, ?, 'pending')''', (user_id, file_name, file_path, file_type, timestamp, message_id))
             conn.commit()
             file_id = c.lastrowid
             logger.info(f"Saved pending file {file_name} (ID: {file_id}) for user {user_id}")
@@ -1590,11 +1206,9 @@ def save_pending_file_to_db(user_id, file_name, file_path, file_type, message_id
         except sqlite3.Error as e:
             logger.error(f"❌ SQLite error saving pending file: {e}")
             return None
-        finally:
-            conn.close()
+        finally: conn.close()
 
 def load_pending_files_from_db():
-    """Load pending files from database into memory"""
     global pending_files
     with DB_LOCK:
         conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
@@ -1607,9 +1221,7 @@ def load_pending_files_from_db():
             for row in rows:
                 file_id, user_id, file_name, file_path, file_type, timestamp_str, message_id = row
                 pending_files[file_id] = {
-                    'user_id': user_id,
-                    'file_name': file_name,
-                    'file_path': file_path,
+                    'user_id': user_id, 'file_name': file_name, 'file_path': file_path,
                     'file_type': file_type,
                     'timestamp': datetime.fromisoformat(timestamp_str) if timestamp_str else datetime.now(),
                     'message_id': message_id
@@ -1619,11 +1231,9 @@ def load_pending_files_from_db():
         except sqlite3.Error as e:
             logger.error(f"❌ SQLite error loading pending files: {e}")
             return {}
-        finally:
-            conn.close()
+        finally: conn.close()
 
 def update_pending_file_status(file_id, status):
-    """Update status of a pending file (approved/rejected)"""
     with DB_LOCK:
         conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
         c = conn.cursor()
@@ -1635,11 +1245,9 @@ def update_pending_file_status(file_id, status):
         except sqlite3.Error as e:
             logger.error(f"❌ SQLite error updating pending file status: {e}")
             return False
-        finally:
-            conn.close()
+        finally: conn.close()
 
 def get_pending_files_count():
-    """Get count of pending files"""
     with DB_LOCK:
         conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
         c = conn.cursor()
@@ -1650,11 +1258,9 @@ def get_pending_files_count():
         except sqlite3.Error as e:
             logger.error(f"❌ SQLite error counting pending files: {e}")
             return 0
-        finally:
-            conn.close()
+        finally: conn.close()
 
 def get_pending_file_by_id(file_id):
-    """Get pending file details by ID"""
     with DB_LOCK:
         conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
         c = conn.cursor()
@@ -1664,23 +1270,17 @@ def get_pending_file_by_id(file_id):
             row = c.fetchone()
             if row:
                 return {
-                    'file_id': row[0],
-                    'user_id': row[1],
-                    'file_name': row[2],
-                    'file_path': row[3],
-                    'file_type': row[4],
-                    'timestamp': datetime.fromisoformat(row[5]) if row[5] else datetime.now(),
+                    'file_id': row[0], 'user_id': row[1], 'file_name': row[2], 'file_path': row[3],
+                    'file_type': row[4], 'timestamp': datetime.fromisoformat(row[5]) if row[5] else datetime.now(),
                     'message_id': row[6]
                 }
             return None
         except sqlite3.Error as e:
             logger.error(f"❌ SQLite error getting pending file: {e}")
             return None
-        finally:
-            conn.close()
+        finally: conn.close()
 
 def get_pending_files_for_admin():
-    """Get all pending files for admin display"""
     with DB_LOCK:
         conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
         c = conn.cursor()
@@ -1692,54 +1292,56 @@ def get_pending_files_for_admin():
         except sqlite3.Error as e:
             logger.error(f"❌ SQLite error getting pending files for admin: {e}")
             return []
-        finally:
-            conn.close()
+        finally: conn.close()
 
-# Load pending files at startup
 load_pending_files_from_db()
-
 # --- END FILE APPROVAL SYSTEM FUNCTIONS ---
 
 # --- Menu creation (Inline and ReplyKeyboards) ---
 def create_main_menu_inline(user_id):
     markup = types.InlineKeyboardMarkup(row_width=2)
     buttons = [
-        types.InlineKeyboardButton('📢 Updates Channel', url=UPDATE_CHANNEL),
-        types.InlineKeyboardButton('📤 Upload File', callback_data='upload'),
-        types.InlineKeyboardButton('📂 Check Files', callback_data='check_files'),
-        types.InlineKeyboardButton('⚡ Bot Speed', callback_data='speed'),
-        types.InlineKeyboardButton('📤 Send Command', callback_data='send_command'),  # Added Send Command
-        types.InlineKeyboardButton('📞 Contact Owner', url=f'https://t.me/{YOUR_USERNAME.replace("@", "")}')
+        types.InlineKeyboardButton('📢 ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ', url=UPDATE_CHANNEL),
+        types.InlineKeyboardButton('📤 ᴜᴘʟᴏᴀᴅ ꜰɪʟᴇ', callback_data='upload'),
+        types.InlineKeyboardButton('📂 ᴄʜᴇᴄᴋ ꜰɪʟᴇꜱ', callback_data='check_files'),
+        types.InlineKeyboardButton('⚡ ʙᴏᴛ ꜱᴘᴇᴇᴅ', callback_data='speed'),
+        types.InlineKeyboardButton('📤 ꜱᴇɴᴅ ᴄᴏᴍᴍᴀɴᴅ', callback_data='send_command'),
+        types.InlineKeyboardButton('📞 ᴄᴏɴᴛᴀᴄᴛ ᴏᴡɴᴇʀ', url=f'https://t.me/{YOUR_USERNAME.replace("@", "")}')
     ]
 
     if user_id in admin_ids:
         pending_count = get_pending_files_count()
-        pending_text = f"📥 Pending Approvals ({pending_count})" if pending_count > 0 else "📥 Pending Approvals"
+        pending_text = f"📥 ᴘᴇɴᴅɪɴɢ ({pending_count})" if pending_count > 0 else "📥 ᴘᴇɴᴅɪɴɢ ᴀᴘᴘʀᴏᴠᴀʟꜱ"
+        auth_count = len(pending_auth_users)
+        auth_text = f"🔐 ᴀᴜᴛʜ ʀᴇQᴜᴇꜱᴛꜱ ({auth_count})" if auth_count > 0 else "🔐 ᴀᴜᴛʜ ʀᴇQᴜᴇꜱᴛꜱ"
+        
         admin_buttons = [
-            types.InlineKeyboardButton('💳 Subscriptions', callback_data='subscription'),
-            types.InlineKeyboardButton('📊 Statistics', callback_data='stats'),
-            types.InlineKeyboardButton('🔒 Lock Bot' if not bot_locked else '🔓 Unlock Bot',
+            types.InlineKeyboardButton('💳 ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴꜱ', callback_data='subscription'),
+            types.InlineKeyboardButton('📊 ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ', callback_data='stats'),
+            types.InlineKeyboardButton('🔒 ʟᴏᴄᴋ ʙᴏᴛ' if not bot_locked else '🔓 ᴜɴʟᴏᴄᴋ ʙᴏᴛ',
                                      callback_data='lock_bot' if not bot_locked else 'unlock_bot'),
-            types.InlineKeyboardButton('📢 Broadcast', callback_data='broadcast'),
-            types.InlineKeyboardButton('👑 Admin Panel', callback_data='admin_panel'),
-            types.InlineKeyboardButton('🟢 Run All User Scripts', callback_data='run_all_scripts'),
-            types.InlineKeyboardButton(pending_text, callback_data='pending_approvals')
+            types.InlineKeyboardButton('📢 ʙʀᴏᴀᴅᴄᴀꜱᴛ', callback_data='broadcast'),
+            types.InlineKeyboardButton('👑 ᴀᴅᴍɪɴ ᴘᴀɴᴇʟ', callback_data='admin_panel'),
+            types.InlineKeyboardButton('🟢 ʀᴜɴ ᴀʟʟ ꜱᴄʀɪᴘᴛꜱ', callback_data='run_all_scripts'),
+            types.InlineKeyboardButton(pending_text, callback_data='pending_approvals'),
+            types.InlineKeyboardButton(auth_text, callback_data='auth_requests')
         ]
         markup.add(buttons[0])
         markup.add(buttons[1], buttons[2])
         markup.add(buttons[3], admin_buttons[0])
         markup.add(admin_buttons[1], admin_buttons[3])
         markup.add(admin_buttons[2], admin_buttons[5])
-        markup.add(buttons[4])  # Send Command
+        markup.add(buttons[4])
         markup.add(admin_buttons[4])
-        markup.add(admin_buttons[6])  # Pending Approvals
+        markup.add(admin_buttons[6])
+        markup.add(admin_buttons[7])
         markup.add(buttons[5])
     else:
         markup.add(buttons[0])
         markup.add(buttons[1], buttons[2])
         markup.add(buttons[3])
-        markup.add(buttons[4])  # Send Command
-        markup.add(types.InlineKeyboardButton('📊 Statistics', callback_data='stats'))
+        markup.add(buttons[4])
+        markup.add(types.InlineKeyboardButton('📊 ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ', callback_data='stats'))
         markup.add(buttons[5])
     return markup
 
@@ -1754,51 +1356,51 @@ def create_control_buttons(script_owner_id, file_name, is_running=True):
     markup = types.InlineKeyboardMarkup(row_width=2)
     if is_running:
         markup.row(
-            types.InlineKeyboardButton("🔴 Stop", callback_data=f'stop_{script_owner_id}_{file_name}'),
-            types.InlineKeyboardButton("🔄 Restart", callback_data=f'restart_{script_owner_id}_{file_name}')
+            types.InlineKeyboardButton("🔴 ꜱᴛᴏᴘ", callback_data=f'stop_{script_owner_id}_{file_name}'),
+            types.InlineKeyboardButton("🔄 ʀᴇꜱᴛᴀʀᴛ", callback_data=f'restart_{script_owner_id}_{file_name}')
         )
         markup.row(
-            types.InlineKeyboardButton("🗑️ Delete", callback_data=f'delete_{script_owner_id}_{file_name}'),
-            types.InlineKeyboardButton("📜 Logs", callback_data=f'logs_{script_owner_id}_{file_name}')
+            types.InlineKeyboardButton("🗑️ ᴅᴇʟᴇᴛᴇ", callback_data=f'delete_{script_owner_id}_{file_name}'),
+            types.InlineKeyboardButton("📜 ʟᴏɢꜱ", callback_data=f'logs_{script_owner_id}_{file_name}')
         )
     else:
         markup.row(
-            types.InlineKeyboardButton("🟢 Start", callback_data=f'start_{script_owner_id}_{file_name}'),
-            types.InlineKeyboardButton("🗑️ Delete", callback_data=f'delete_{script_owner_id}_{file_name}')
+            types.InlineKeyboardButton("🟢 ꜱᴛᴀʀᴛ", callback_data=f'start_{script_owner_id}_{file_name}'),
+            types.InlineKeyboardButton("🗑️ ᴅᴇʟᴇᴛᴇ", callback_data=f'delete_{script_owner_id}_{file_name}')
         )
         markup.row(
-            types.InlineKeyboardButton("📜 View Logs", callback_data=f'logs_{script_owner_id}_{file_name}')
+            types.InlineKeyboardButton("📜 ᴠɪᴇᴡ ʟᴏɢꜱ", callback_data=f'logs_{script_owner_id}_{file_name}')
         )
-    markup.add(types.InlineKeyboardButton("🔙 Back to Files", callback_data='check_files'))
+    markup.add(types.InlineKeyboardButton("🔙 ʙᴀᴄᴋ ᴛᴏ ꜰɪʟᴇꜱ", callback_data='check_files'))
     return markup
 
 def create_admin_panel():
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.row(
-        types.InlineKeyboardButton('➕ Add Admin', callback_data='add_admin'),
-        types.InlineKeyboardButton('➖ Remove Admin', callback_data='remove_admin')
+        types.InlineKeyboardButton('➕ ᴀᴅᴅ ᴀᴅᴍɪɴ', callback_data='add_admin'),
+        types.InlineKeyboardButton('➖ ʀᴇᴍᴏᴠᴇ ᴀᴅᴍɪɴ', callback_data='remove_admin')
     )
-    markup.row(types.InlineKeyboardButton('📋 List Admins', callback_data='list_admins'))
-    markup.row(types.InlineKeyboardButton('🔙 Back to Main', callback_data='back_to_main'))
+    markup.row(types.InlineKeyboardButton('📋 ʟɪꜱᴛ ᴀᴅᴍɪɴꜱ', callback_data='list_admins'))
+    markup.row(types.InlineKeyboardButton('🔙 ʙᴀᴄᴋ ᴛᴏ ᴍᴀɪɴ', callback_data='back_to_main'))
     return markup
 
 def create_subscription_menu():
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.row(
-        types.InlineKeyboardButton('➕ Add Subscription', callback_data='add_subscription'),
-        types.InlineKeyboardButton('➖ Remove Subscription', callback_data='remove_subscription')
+        types.InlineKeyboardButton('➕ ᴀᴅᴅ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ', callback_data='add_subscription'),
+        types.InlineKeyboardButton('➖ ʀᴇᴍᴏᴠᴇ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ', callback_data='remove_subscription')
     )
-    markup.row(types.InlineKeyboardButton('🔍 Check Subscription', callback_data='check_subscription'))
-    markup.row(types.InlineKeyboardButton('🔙 Back to Main', callback_data='back_to_main'))
+    markup.row(types.InlineKeyboardButton('🔍 ᴄʜᴇᴄᴋ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ', callback_data='check_subscription'))
+    markup.row(types.InlineKeyboardButton('🔙 ʙᴀᴄᴋ ᴛᴏ ᴍᴀɪɴ', callback_data='back_to_main'))
     return markup
 
 def create_send_command_menu():
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.row(
-        types.InlineKeyboardButton('📝 Send to Process', callback_data='send_to_process'),
-        types.InlineKeyboardButton('🔍 View All Logs', callback_data='view_all_logs')
+        types.InlineKeyboardButton('📝 ꜱᴇɴᴅ ᴛᴏ ᴘʀᴏᴄᴇꜱꜱ', callback_data='send_to_process'),
+        types.InlineKeyboardButton('🔍 ᴠɪᴇᴡ ᴀʟʟ ʟᴏɢꜱ', callback_data='view_all_logs')
     )
-    markup.row(types.InlineKeyboardButton('🔙 Back to Main', callback_data='back_to_main'))
+    markup.row(types.InlineKeyboardButton('🔙 ʙᴀᴄᴋ ᴛᴏ ᴍᴀɪɴ', callback_data='back_to_main'))
     return markup
 # --- End Menu Creation ---
 
@@ -1808,7 +1410,6 @@ def handle_zip_file(downloaded_file_content, file_name_zip, message):
     user_folder = get_user_folder(user_id)
     temp_dir = None
     
-    # Security check for ZIP files (except owner)
     if user_id != OWNER_ID:
         is_safe, reason = scan_file_for_malware(downloaded_file_content, file_name_zip, user_id)
         if not is_safe:
@@ -1822,9 +1423,7 @@ def handle_zip_file(downloaded_file_content, file_name_zip, message):
         with open(zip_path, 'wb') as new_file:
             new_file.write(downloaded_file_content)
         
-        # Open Zip to Extract
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            # Additional security check on content
             if user_id != OWNER_ID:
                 for member in zip_ref.infolist():
                     member_name_lower = member.filename.lower()
@@ -1832,57 +1431,41 @@ def handle_zip_file(downloaded_file_content, file_name_zip, message):
                     if any(member_name_lower.endswith(ext) for ext in suspicious_extensions):
                         bot.reply_to(message, f"🚨 Security Alert: ZIP contains suspicious file: {member.filename}\nOnly owner can upload such files.")
                         return
-                    
-                    # Check for path traversal
                     member_path = os.path.abspath(os.path.join(temp_dir, member.filename))
                     if not member_path.startswith(os.path.abspath(temp_dir)):
                         raise zipfile.BadZipFile(f"Zip has unsafe path: {member.filename}")
-            
-            # Extract everything
             zip_ref.extractall(temp_dir)
             logger.info(f"Extracted zip to {temp_dir}")
 
-        # --- FIX: Recursively find script if not in root (ignores __MACOSX) ---
         target_dir = temp_dir
         root_files = os.listdir(target_dir)
         
-        # Check if script exists in root
         if not any(f.endswith(('.py', '.js')) for f in root_files):
-            # Recursively search for a folder containing .py or .js
             for root, dirs, files in os.walk(temp_dir):
-                # Ignore system/hidden folders like __MACOSX or .git
                 dirs[:] = [d for d in dirs if not d.startswith('.') and not d.startswith('__')]
-                
                 if any(f.endswith(('.py', '.js')) for f in files):
                     target_dir = root
                     break
         
-        # If the script is in a subdirectory, move everything up to temp_dir
         if target_dir != temp_dir:
             logger.info(f"Flattening extracted files from {target_dir} to {temp_dir}")
             for item in os.listdir(target_dir):
                 s = os.path.join(target_dir, item)
                 d = os.path.join(temp_dir, item)
-                # Overwrite if exists (shouldn't happen often in this temp context)
                 if os.path.exists(d):
                     if os.path.isdir(d): shutil.rmtree(d)
                     else: os.remove(d)
                 shutil.move(s, d)
-            # Refresh list after flattening
             extracted_items = os.listdir(temp_dir)
         else:
             extracted_items = root_files
-        # --- END FIX ---
 
         py_files = [f for f in extracted_items if f.endswith('.py')]
         js_files = [f for f in extracted_items if f.endswith('.js')]
         req_file = 'requirements.txt' if 'requirements.txt' in extracted_items else None
         pkg_json = 'package.json' if 'package.json' in extracted_items else None
 
-        # Check if this is a pending approval or direct upload
-        # For non-admin users, files go to approval
         if user_id not in admin_ids:
-            # Save as pending approval
             main_script_name = None
             file_type = None
             preferred_py = ['main.py', 'bot.py', 'app.py']
@@ -1910,7 +1493,6 @@ def handle_zip_file(downloaded_file_content, file_name_zip, message):
                 bot.reply_to(message, "❌ No `.py` or `.js` script found in archive!")
                 return
             
-            # Move files to user folder
             moved_count = 0
             for item_name in os.listdir(temp_dir):
                 if item_name == file_name_zip:
@@ -1924,7 +1506,6 @@ def handle_zip_file(downloaded_file_content, file_name_zip, message):
                 shutil.move(src_path, dest_path)
                 moved_count += 1
             
-            # Save pending approval
             main_script_path = os.path.join(user_folder, main_script_name)
             approval_msg = bot.send_message(
                 message.chat.id,
@@ -1933,14 +1514,10 @@ def handle_zip_file(downloaded_file_content, file_name_zip, message):
                 f"⏳ Waiting for admin approval before hosting."
             )
             
-            # Save to pending files
             file_id = save_pending_file_to_db(user_id, main_script_name, main_script_path, file_type, approval_msg.message_id)
-            
-            # Notify admins
             notify_admins_about_pending(user_id, main_script_name, file_type, file_id, file_name_zip)
             return
         
-        # For admins/owner, process directly (existing code continues)
         if req_file:
             req_path = os.path.join(temp_dir, req_file)
             logger.info(f"requirements.txt found, installing: {req_path}")
@@ -1956,8 +1533,8 @@ def handle_zip_file(downloaded_file_content, file_name_zip, message):
                 if len(error_msg) > 4000: error_msg = error_msg[:4000] + "\n... (Log truncated)"
                 bot.reply_to(message, error_msg, parse_mode='Markdown'); return
             except Exception as e:
-                 error_msg = f"❌ Unexpected error installing Python deps: {e}"
-                 logger.error(error_msg, exc_info=True); bot.reply_to(message, error_msg); return
+                error_msg = f"❌ Unexpected error installing Python deps: {e}"
+                logger.error(error_msg, exc_info=True); bot.reply_to(message, error_msg); return
 
         if pkg_json:
             logger.info(f"package.json found, npm install in: {temp_dir}")
@@ -1968,23 +1545,23 @@ def handle_zip_file(downloaded_file_content, file_name_zip, message):
                 logger.info(f"npm install OK. Output:\n{result.stdout}")
                 bot.reply_to(message, f"✅ Node deps from `{pkg_json}` installed.")
             except FileNotFoundError:
-                bot.reply_to(message, "❌ 'npm' not found. Cannot install Node deps."); return 
+                bot.reply_to(message, "❌ 'npm' not found. Cannot install Node deps."); return
             except subprocess.CalledProcessError as e:
                 error_msg = f"❌ Failed to install Node deps from `{pkg_json}`.\nLog:\n```\n{e.stderr or e.stdout}\n```"
                 logger.error(error_msg)
                 if len(error_msg) > 4000: error_msg = error_msg[:4000] + "\n... (Log truncated)"
                 bot.reply_to(message, error_msg, parse_mode='Markdown'); return
             except Exception as e:
-                 error_msg = f"❌ Unexpected error installing Node deps: {e}"
-                 logger.error(error_msg, exc_info=True); bot.reply_to(message, error_msg); return
+                error_msg = f"❌ Unexpected error installing Node deps: {e}"
+                logger.error(error_msg, exc_info=True); bot.reply_to(message, error_msg); return
 
         main_script_name = None; file_type = None
         preferred_py = ['main.py', 'bot.py', 'app.py']; preferred_js = ['index.js', 'main.js', 'bot.js', 'app.js']
         for p in preferred_py:
             if p in py_files: main_script_name = p; file_type = 'py'; break
         if not main_script_name:
-             for p in preferred_js:
-                 if p in js_files: main_script_name = p; file_type = 'js'; break
+            for p in preferred_js:
+                if p in js_files: main_script_name = p; file_type = 'js'; break
         if not main_script_name:
             if py_files: main_script_name = py_files[0]; file_type = 'py'
             elif js_files: main_script_name = js_files[0]; file_type = 'js'
@@ -1994,7 +1571,7 @@ def handle_zip_file(downloaded_file_content, file_name_zip, message):
         logger.info(f"Moving extracted files from {temp_dir} to {user_folder}")
         moved_count = 0
         for item_name in os.listdir(temp_dir):
-            if item_name == file_name_zip: continue # Don't move the zip file itself if it's there
+            if item_name == file_name_zip: continue
             src_path = os.path.join(temp_dir, item_name)
             dest_path = os.path.join(user_folder, item_name)
             if os.path.isdir(dest_path): shutil.rmtree(dest_path)
@@ -2008,9 +1585,9 @@ def handle_zip_file(downloaded_file_content, file_name_zip, message):
         bot.reply_to(message, f"✅ Files extracted. Starting main script: `{main_script_name}`...", parse_mode='Markdown')
 
         if file_type == 'py':
-             threading.Thread(target=run_script, args=(main_script_path, user_id, user_folder, main_script_name, message)).start()
+            threading.Thread(target=run_script, args=(main_script_path, user_id, user_folder, main_script_name, message)).start()
         elif file_type == 'js':
-             threading.Thread(target=run_js_script, args=(main_script_path, user_id, user_folder, main_script_name, message)).start()
+            threading.Thread(target=run_js_script, args=(main_script_path, user_id, user_folder, main_script_name, message)).start()
 
     except zipfile.BadZipFile as e:
         logger.error(f"Bad zip file from {user_id}: {e}")
@@ -2025,13 +1602,11 @@ def handle_zip_file(downloaded_file_content, file_name_zip, message):
 
 def handle_js_file(file_path, script_owner_id, user_folder, file_name, message):
     try:
-        # Check if user is admin - if not, need approval
         if script_owner_id not in admin_ids:
             file_id = save_pending_file_to_db(script_owner_id, file_name, file_path, 'js', message.message_id)
             notify_admins_about_pending(script_owner_id, file_name, 'js', file_id, file_name)
             bot.reply_to(message, f"📤 File `{file_name}` uploaded for approval.\n⏳ Waiting for admin approval before hosting.")
             return
-        
         save_user_file(script_owner_id, file_name, 'js')
         threading.Thread(target=run_js_script, args=(file_path, script_owner_id, user_folder, file_name, message)).start()
     except Exception as e:
@@ -2040,13 +1615,11 @@ def handle_js_file(file_path, script_owner_id, user_folder, file_name, message):
 
 def handle_py_file(file_path, script_owner_id, user_folder, file_name, message):
     try:
-        # Check if user is admin - if not, need approval
         if script_owner_id not in admin_ids:
             file_id = save_pending_file_to_db(script_owner_id, file_name, file_path, 'py', message.message_id)
             notify_admins_about_pending(script_owner_id, file_name, 'py', file_id, file_name)
             bot.reply_to(message, f"📤 File `{file_name}` uploaded for approval.\n⏳ Waiting for admin approval before hosting.")
             return
-        
         save_user_file(script_owner_id, file_name, 'py')
         threading.Thread(target=run_script, args=(file_path, script_owner_id, user_folder, file_name, message)).start()
     except Exception as e:
@@ -2054,17 +1627,16 @@ def handle_py_file(file_path, script_owner_id, user_folder, file_name, message):
         bot.reply_to(message, f"❌ Error processing Python file: {str(e)}")
 
 def notify_admins_about_pending(user_id, file_name, file_type, file_id, original_file_name):
-    """Notify all admins about a pending file approval"""
     pending_count = get_pending_files_count()
     for admin_id in admin_ids:
         try:
-            if admin_id != user_id:  # Don't notify the uploader
+            if admin_id != user_id:
                 markup = types.InlineKeyboardMarkup(row_width=2)
                 markup.row(
-                    types.InlineKeyboardButton("✅ Approve", callback_data=f'approve_{file_id}'),
-                    types.InlineKeyboardButton("❌ Reject", callback_data=f'reject_{file_id}')
+                    types.InlineKeyboardButton("✅ ᴀᴘᴘʀᴏᴠᴇ", callback_data=f'approve_{file_id}'),
+                    types.InlineKeyboardButton("❌ ʀᴇᴊᴇᴄᴛ", callback_data=f'reject_{file_id}')
                 )
-                markup.row(types.InlineKeyboardButton("📥 View All Pending", callback_data='pending_approvals'))
+                markup.row(types.InlineKeyboardButton("📥 ᴠɪᴇᴡ ᴀʟʟ ᴘᴇɴᴅɪɴɢ", callback_data='pending_approvals'))
                 
                 bot.send_message(
                     admin_id,
@@ -2082,7 +1654,6 @@ def notify_admins_about_pending(user_id, file_name, file_type, file_id, original
             logger.error(f"Failed to notify admin {admin_id} about pending file: {e}")
 
 def _logic_pending_approvals(message):
-    """Show pending approvals to admin"""
     user_id = message.from_user.id
     if user_id not in admin_ids:
         bot.reply_to(message, "⚠️ Admin permissions required.")
@@ -2096,7 +1667,6 @@ def _logic_pending_approvals(message):
     
     markup = types.InlineKeyboardMarkup(row_width=1)
     for file_id, user_id_pending, file_name, file_type, timestamp in pending_list:
-        # Format timestamp
         try:
             ts = datetime.fromisoformat(timestamp) if timestamp else datetime.now()
             time_str = ts.strftime("%Y-%m-%d %H:%M")
@@ -2110,14 +1680,12 @@ def _logic_pending_approvals(message):
     bot.reply_to(message, f"📥 Pending Approvals ({len(pending_list)}):", reply_markup=markup)
 
 def view_pending_file_details(call):
-    """Show details of a pending file and allow approve/reject"""
     try:
         file_id = int(call.data.split('_')[2])
         pending_file = get_pending_file_by_id(file_id)
         
         if not pending_file:
             bot.answer_callback_query(call.id, "File no longer pending.", show_alert=True)
-            # Refresh pending list
             _logic_pending_approvals(call.message)
             return
         
@@ -2155,7 +1723,6 @@ def view_pending_file_details(call):
         bot.answer_callback_query(call.id, "Error viewing file details.")
 
 def approve_pending_file(call):
-    """Approve a pending file and start hosting it"""
     try:
         file_id = int(call.data.split('_')[1])
         admin_id = call.from_user.id
@@ -2174,13 +1741,9 @@ def approve_pending_file(call):
         file_path = pending_file['file_path']
         file_type = pending_file['file_type']
         
-        # Update file status in DB
         update_pending_file_status(file_id, 'approved')
-        
-        # Add to user files
         save_user_file(user_id, file_name, file_type)
         
-        # Start the script
         user_folder = get_user_folder(user_id)
         try:
             if file_type == 'py':
@@ -2188,7 +1751,6 @@ def approve_pending_file(call):
             elif file_type == 'js':
                 threading.Thread(target=run_js_script, args=(file_path, user_id, user_folder, file_name, call.message)).start()
             
-            # Notify user
             try:
                 bot.send_message(
                     user_id,
@@ -2203,7 +1765,6 @@ def approve_pending_file(call):
             logger.error(f"Error starting approved file: {e}")
             bot.answer_callback_query(call.id, f"Error starting file: {str(e)}", show_alert=True)
         
-        # Refresh pending list
         _logic_pending_approvals(call.message)
         
     except Exception as e:
@@ -2211,7 +1772,6 @@ def approve_pending_file(call):
         bot.answer_callback_query(call.id, f"Error: {str(e)}", show_alert=True)
 
 def reject_pending_file(call):
-    """Reject a pending file and delete it"""
     try:
         file_id = int(call.data.split('_')[1])
         admin_id = call.from_user.id
@@ -2229,10 +1789,8 @@ def reject_pending_file(call):
         file_name = pending_file['file_name']
         file_path = pending_file['file_path']
         
-        # Update file status in DB
         update_pending_file_status(file_id, 'rejected')
         
-        # Delete the file from disk
         if os.path.exists(file_path):
             try:
                 os.remove(file_path)
@@ -2240,7 +1798,6 @@ def reject_pending_file(call):
             except Exception as e:
                 logger.error(f"Error deleting rejected file: {e}")
         
-        # Notify user
         try:
             bot.send_message(
                 user_id,
@@ -2251,8 +1808,6 @@ def reject_pending_file(call):
             logger.error(f"Failed to notify user {user_id} about rejection: {e}")
         
         bot.answer_callback_query(call.id, f"❌ File '{file_name}' rejected and deleted.")
-        
-        # Refresh pending list
         _logic_pending_approvals(call.message)
         
     except Exception as e:
@@ -2261,20 +1816,16 @@ def reject_pending_file(call):
 
 # --- Send Command and Enhanced Logs Functions ---
 def _logic_send_command(message):
-    """Handle send command functionality"""
     user_id = message.from_user.id
     if bot_locked and user_id not in admin_ids:
         bot.reply_to(message, "⚠️ Bot locked by admin.")
         return
-        
     bot.reply_to(message, "📤 Send Command Options:", reply_markup=create_send_command_menu())
 
 def send_to_process_init(message):
-    """Initialize process for sending command to a running script"""
     user_id = message.from_user.id
     chat_id = message.chat.id
     
-    # Get user's running processes
     user_running_scripts = []
     for script_key, script_info in bot_scripts.items():
         script_owner_id = script_info['script_owner_id']
@@ -2294,7 +1845,6 @@ def send_to_process_init(message):
     bot.reply_to(message, "📝 Select a running script to send command to:", reply_markup=markup)
 
 def process_send_command(message, script_key):
-    """Process the actual command to send to the script"""
     user_id = message.from_user.id
     chat_id = message.chat.id
     
@@ -2308,12 +1858,10 @@ def process_send_command(message, script_key):
     try:
         process = script_info['process']
         if process and process.poll() is None:
-            # Send command to process stdin
             process.stdin.write(command_text + '\n')
             process.stdin.flush()
             bot.reply_to(message, f"✅ Command sent to `{script_info['file_name']}`:\n`{command_text}`", parse_mode='Markdown')
             
-            # Wait a bit and check if process is still running
             time.sleep(1)
             if process.poll() is not None:
                 bot.reply_to(message, f"⚠️ Script `{script_info['file_name']}` stopped after receiving command.")
@@ -2324,13 +1872,10 @@ def process_send_command(message, script_key):
         bot.reply_to(message, f"❌ Error sending command: {str(e)}")
 
 def view_all_logs(message):
-    """Show all available logs for user"""
     user_id = message.from_user.id
     chat_id = message.chat.id
     
     user_logs = []
-    
-    # Get user's folder and all log files
     user_folder = get_user_folder(user_id)
     if os.path.exists(user_folder):
         for file in os.listdir(user_folder):
@@ -2353,16 +1898,13 @@ def view_all_logs(message):
     bot.reply_to(message, "📜 Available Log Files:", reply_markup=markup)
 
 def send_log_file(message, log_path, log_filename):
-    """Send log file as document"""
     try:
         file_size = os.path.getsize(log_path)
-        if file_size > 50 * 1024 * 1024:  # 50MB limit
+        if file_size > 50 * 1024 * 1024:
             bot.reply_to(message, f"❌ Log file too large ({file_size/1024/1024:.1f} MB). Maximum 50MB.")
             return
-        
         with open(log_path, 'rb') as log_file:
             bot.send_document(message.chat.id, log_file, caption=f"📜 {log_filename}")
-            
     except Exception as e:
         logger.error(f"Error sending log file {log_path}: {e}")
         bot.reply_to(message, f"❌ Error sending log file: {str(e)}")
@@ -2376,11 +1918,25 @@ def _logic_send_welcome(message):
 
     logger.info(f"Welcome request from user_id: {user_id}, username: @{user_username}")
 
-# 🔒 Force Join Check
-    if user_id not in admin_ids:
-        if not is_user_joined_all(user_id):
-            send_force_join_msg(chat_id)
-            return
+    # 🔐 PASSWORD CHECK
+    if PASSWORD_REQUIRED and user_id not in admin_ids:
+        if not is_user_authenticated(user_id):
+            if user_id in pending_auth_users:
+                bot.send_message(chat_id, f"""
+{EMOJI_HEADER}
+   ⏳ ᴀᴄᴄᴇꜱꜱ ᴘᴇɴᴅɪɴɢ
+{EMOJI_FOOTER}
+
+ᴛʜᴀɴᴋ ʏᴏᴜ ꜰᴏʀ ᴇɴᴛᴇʀɪɴɢ ᴛʜᴇ ᴘᴀꜱꜱᴡᴏʀᴅ!
+
+ᴘʟᴇᴀꜱᴇ ᴡᴀɪᴛ ꜰᴏʀ ᴛʜᴇ ᴏᴡɴᴇʀ ᴛᴏ ᴀᴘᴘʀᴏᴠᴇ ʏᴏᴜʀ ᴀᴄᴄᴇꜱꜱ.
+
+{DIVIDER}
+""")
+                return
+            else:
+                send_password_prompt(chat_id, user_name)
+                return
 
     if bot_locked and user_id not in admin_ids:
         bot.send_message(chat_id, "⚠️ Bot locked by admin. Try later.")
@@ -2420,13 +1976,27 @@ def _logic_send_welcome(message):
     pending_count = get_pending_files_count()
     pending_msg = f"\n📥 Pending Files: {pending_count}" if user_id in admin_ids and pending_count > 0 else ""
 
-    welcome_msg_text = (f"〽️ Welcome, {user_name}!\n\n🆔 Your User ID: `{user_id}`\n"
-                        f"✳️ Username: `@{user_username or 'Not set'}`\n"
-                        f"🔰 Your Status: {user_status}{expiry_info}\n"
-                        f"📁 Files Uploaded: {current_files} / {limit_str}{pending_msg}\n\n"
-                        f"🤖 Host & run Python (`.py`) or JS (`.js`) scripts.\n"
-                        f"   Upload single scripts or `.zip` archives.\n\n"
-                        f"👇 Use buttons or type commands.")
+    welcome_msg_text = f"""
+{EMOJI_HEADER}
+   🌟 ᴡᴇʟᴄᴏᴍᴇ {user_name}!
+{EMOJI_FOOTER}
+
+🆔 ʏᴏᴜʀ ɪᴅ: `{user_id}`
+✳️ ᴜꜱᴇʀɴᴀᴍᴇ: `@{user_username or 'Not set'}`
+🔰 ꜱᴛᴀᴛᴜꜱ: {user_status}{expiry_info}
+📁 ꜰɪʟᴇꜱ: {current_files} / {limit_str}{pending_msg}
+
+{DIVIDER_THIN}
+
+🤖 ʜᴏꜱᴛ & ʀᴜɴ ᴘʏᴛʜᴏɴ (`.py`) ᴏʀ ᴊꜱ (`.js`) ꜱᴄʀɪᴘᴛꜱ.
+📦 ᴜᴘʟᴏᴀᴅ ꜱɪɴɢʟᴇ ꜱᴄʀɪᴘᴛꜱ ᴏʀ `.zip` ᴀʀᴄʜɪᴠᴇꜱ.
+
+{DIVIDER_THIN}
+
+👇 ᴜꜱᴇ ʙᴜᴛᴛᴏɴꜱ ᴏʀ ᴛʏᴘᴇ ᴄᴏᴍᴍᴀɴᴅꜱ.
+
+{DIVIDER}
+"""
     main_reply_markup = create_reply_keyboard_main_menu(user_id)
     try:
         if photo_file_id: bot.send_photo(chat_id, photo_file_id)
@@ -2574,7 +2144,7 @@ def _logic_run_all_scripts(message_or_call):
         admin_chat_id = message_or_call.message.chat.id
         bot.answer_callback_query(message_or_call.id)
         reply_func = lambda text, **kwargs: bot.send_message(admin_chat_id, text, **kwargs)
-        admin_message_obj_for_script_runner = message_or_call.message 
+        admin_message_obj_for_script_runner = message_or_call.message
     else:
         logger.error("Invalid argument for _logic_run_all_scripts")
         return
@@ -2646,7 +2216,7 @@ BUTTON_TEXT_TO_LOGIC = {
     "📤 Upload File": _logic_upload_file,
     "📂 Check Files": _logic_check_files,
     "⚡ Bot Speed": _logic_bot_speed,
-    "📤 Send Command": _logic_send_command,  # Added Send Command
+    "📤 Send Command": _logic_send_command,
     "📞 Contact Owner": _logic_contact_owner,
     "📊 Statistics": _logic_statistics,
     "💳 Subscriptions": _logic_subscriptions_panel,
@@ -2654,7 +2224,8 @@ BUTTON_TEXT_TO_LOGIC = {
     "🔒 Lock Bot": _logic_toggle_lock_bot,
     "🟢 Running All Code": _logic_run_all_scripts,
     "👑 Admin Panel": _logic_admin_panel,
-    "📥 Pending Approvals": _logic_pending_approvals,  # Added for approval system
+    "📥 Pending Approvals": _logic_pending_approvals,
+    "🔐 Auth Requests": show_auth_requests,
 }
 
 @bot.message_handler(func=lambda message: message.text in BUTTON_TEXT_TO_LOGIC)
@@ -2671,7 +2242,7 @@ def command_upload_file(message): _logic_upload_file(message)
 def command_check_files(message): _logic_check_files(message)
 @bot.message_handler(commands=['botspeed'])
 def command_bot_speed(message): _logic_bot_speed(message)
-@bot.message_handler(commands=['sendcommand'])  # Added Send Command
+@bot.message_handler(commands=['sendcommand'])
 def command_send_command(message): _logic_send_command(message)
 @bot.message_handler(commands=['contactowner'])
 def command_contact_owner(message): _logic_contact_owner(message)
@@ -2681,29 +2252,46 @@ def command_subscriptions(message): _logic_subscriptions_panel(message)
 def command_statistics(message): _logic_statistics(message)
 @bot.message_handler(commands=['broadcast'])
 def command_broadcast(message): _logic_broadcast_init(message)
-@bot.message_handler(commands=['lockbot']) 
+@bot.message_handler(commands=['lockbot'])
 def command_lock_bot(message): _logic_toggle_lock_bot(message)
 @bot.message_handler(commands=['adminpanel'])
 def command_admin_panel(message): _logic_admin_panel(message)
 @bot.message_handler(commands=['runningallcode'])
 def command_run_all_code(message): _logic_run_all_scripts(message)
-@bot.message_handler(commands=['pendingapprovals'])  # Added for approval system
+@bot.message_handler(commands=['pendingapprovals'])
 def command_pending_approvals(message): _logic_pending_approvals(message)
+@bot.message_handler(commands=['authrequests'])
+def command_auth_requests(message): show_auth_requests(message)
 
 @bot.message_handler(commands=['ping'])
 def ping(message):
-    start_ping_time = time.time() 
+    start_ping_time = time.time()
     msg = bot.reply_to(message, "Pong!")
     latency = round((time.time() - start_ping_time) * 1000, 2)
     bot.edit_message_text(f"Pong! Latency: {latency} ms", message.chat.id, msg.message_id)
 
-# --- Document (File) Handler with Malware Detection and Approval ---
+# --- Password Entry Handler ---
+@bot.message_handler(func=lambda message: PASSWORD_REQUIRED and 
+                     message.from_user.id not in admin_ids and 
+                     not is_user_authenticated(message.from_user.id) and
+                     message.from_user.id not in pending_auth_users and
+                     message.content_type == 'text' and
+                     not message.text.startswith('/'))
+def handle_password_entry(message):
+    process_password_entry(message)
+
+# --- Document (File) Handler ---
 @bot.message_handler(content_types=['document'])
 def handle_file_upload_doc(message):
     user_id = message.from_user.id
     chat_id = message.chat.id
     doc = message.document
     logger.info(f"Doc from {user_id}: {doc.file_name} ({doc.mime_type}), Size: {doc.file_size}")
+
+    # Check authentication
+    if PASSWORD_REQUIRED and user_id not in admin_ids and not is_user_authenticated(user_id):
+        bot.reply_to(message, "🔐 Please authenticate first. Send /start to enter password.")
+        return
 
     if bot_locked and user_id not in admin_ids:
         bot.reply_to(message, "⚠️ Bot locked, cannot accept files.")
@@ -2736,7 +2324,6 @@ def handle_file_upload_doc(message):
         file_info_tg_doc = bot.get_file(doc.file_id)
         downloaded_file_content = bot.download_file(file_info_tg_doc.file_path)
         
-        # Malware scan (except for owner)
         if user_id != OWNER_ID:
             is_safe, reason = scan_file_for_malware(downloaded_file_content, file_name, user_id)
             if not is_safe:
@@ -2756,34 +2343,54 @@ def handle_file_upload_doc(message):
             if file_ext == '.js': handle_js_file(file_path, user_id, user_folder, file_name, message)
             elif file_ext == '.py': handle_py_file(file_path, user_id, user_folder, file_name, message)
     except telebot.apihelper.ApiTelegramException as e:
-         logger.error(f"Telegram API Error handling file for {user_id}: {e}", exc_info=True)
-         if "file is too big" in str(e).lower():
-              bot.reply_to(message, f"❌ Telegram API Error: File too large to download (~20MB limit).")
-         else: bot.reply_to(message, f"❌ Telegram API Error: {str(e)}. Try later.")
+        logger.error(f"Telegram API Error handling file for {user_id}: {e}", exc_info=True)
+        if "file is too big" in str(e).lower():
+            bot.reply_to(message, f"❌ Telegram API Error: File too large to download (~20MB limit).")
+        else: bot.reply_to(message, f"❌ Telegram API Error: {str(e)}. Try later.")
     except Exception as e:
         logger.error(f"❌ General error handling file for {user_id}: {e}", exc_info=True)
         bot.reply_to(message, f"❌ Unexpected error: {str(e)}")
 
-# --- Callback Query Handlers (for Inline Buttons) ---
-@bot.callback_query_handler(func=lambda call: call.data == "force_join_check")
-def force_join_recheck(call):
-    user_id = call.from_user.id
-
-    if is_user_joined_all(user_id):
-        bot.answer_callback_query(call.id, "✅ All channels verified!")
-        _logic_send_welcome(call.message)
-    else:
-        bot.answer_callback_query(call.id, "❌ Sab channels join karo pehle", show_alert=True)
-
-@bot.callback_query_handler(func=lambda call: True) 
+# --- Callback Query Handlers ---
+@bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
     user_id = call.from_user.id
     data = call.data
     logger.info(f"Callback: User={user_id}, Data='{data}'")
 
+    # Handle password entry button
+    if data == "enter_password":
+        bot.answer_callback_query(call.id)
+        msg = bot.send_message(call.message.chat.id, f"""
+{EMOJI_HEADER}
+   🔐 ᴇɴᴛᴇʀ ᴘᴀꜱꜱᴡᴏʀᴅ
+{EMOJI_FOOTER}
+
+📝 ᴘʟᴇᴀꜱᴇ ᴛʏᴘᴇ ᴛʜᴇ ᴘᴀꜱꜱᴡᴏʀᴅ ʙᴇʟᴏᴡ:
+
+{DIVIDER_THIN}
+
+💡 ᴛʜᴇ ᴘᴀꜱꜱᴡᴏʀᴅ ɪꜱ ᴄᴀꜱᴇ-ꜱᴇɴꜱɪᴛɪᴠᴇ.
+
+{DIVIDER}
+""")
+        return
+
+    # Handle auth approval/rejection (for admins)
+    if data.startswith('auth_approve_'):
+        approve_user_auth(call)
+        return
+    if data.startswith('auth_reject_'):
+        reject_user_auth(call)
+        return
+    if data == 'auth_requests':
+        show_auth_requests(call)
+        return
+
     if bot_locked and user_id not in admin_ids and data not in ['back_to_main', 'speed', 'stats']:
         bot.answer_callback_query(call.id, "⚠️ Bot locked by admin.", show_alert=True)
         return
+    
     try:
         if data == 'upload': upload_callback(call)
         elif data == 'check_files': check_files_callback(call)
@@ -2797,31 +2404,28 @@ def handle_callbacks(call):
         elif data == 'back_to_main': back_to_main_callback(call)
         elif data.startswith('confirm_broadcast_'): handle_confirm_broadcast(call)
         elif data == 'cancel_broadcast': handle_cancel_broadcast(call)
-        # --- Approval System Callbacks ---
         elif data == 'pending_approvals': pending_approvals_callback(call)
         elif data.startswith('view_pending_'): view_pending_file_details(call)
         elif data.startswith('approve_'): approve_pending_file(call)
         elif data.startswith('reject_'): reject_pending_file(call)
-        # --- New Send Command Callbacks ---
         elif data == 'send_command': send_command_callback(call)
         elif data == 'send_to_process': send_to_process_callback(call)
         elif data.startswith('sendcmd_select_'): sendcmd_select_callback(call)
         elif data == 'view_all_logs': view_all_logs_callback(call)
         elif data.startswith('viewlog_'): viewlog_callback(call)
-        # --- Admin Callbacks ---
         elif data == 'subscription': admin_required_callback(call, subscription_management_callback)
         elif data == 'stats': stats_callback(call)
         elif data == 'lock_bot': admin_required_callback(call, lock_bot_callback)
         elif data == 'unlock_bot': admin_required_callback(call, unlock_bot_callback)
         elif data == 'run_all_scripts': admin_required_callback(call, run_all_scripts_callback)
-        elif data == 'broadcast': admin_required_callback(call, broadcast_init_callback) 
+        elif data == 'broadcast': admin_required_callback(call, broadcast_init_callback)
         elif data == 'admin_panel': admin_required_callback(call, admin_panel_callback)
-        elif data == 'add_admin': owner_required_callback(call, add_admin_init_callback) 
-        elif data == 'remove_admin': owner_required_callback(call, remove_admin_init_callback) 
+        elif data == 'add_admin': owner_required_callback(call, add_admin_init_callback)
+        elif data == 'remove_admin': owner_required_callback(call, remove_admin_init_callback)
         elif data == 'list_admins': admin_required_callback(call, list_admins_callback)
-        elif data == 'add_subscription': admin_required_callback(call, add_subscription_init_callback) 
-        elif data == 'remove_subscription': admin_required_callback(call, remove_subscription_init_callback) 
-        elif data == 'check_subscription': admin_required_callback(call, check_subscription_init_callback) 
+        elif data == 'add_subscription': admin_required_callback(call, add_subscription_init_callback)
+        elif data == 'remove_subscription': admin_required_callback(call, remove_subscription_init_callback)
+        elif data == 'check_subscription': admin_required_callback(call, check_subscription_init_callback)
         else:
             bot.answer_callback_query(call.id, "Unknown action.")
             logger.warning(f"Unhandled callback data: {data} from user {user_id}")
@@ -2834,7 +2438,7 @@ def admin_required_callback(call, func_to_run):
     if call.from_user.id not in admin_ids:
         bot.answer_callback_query(call.id, "⚠️ Admin permissions required.", show_alert=True)
         return
-    func_to_run(call) 
+    func_to_run(call)
 
 def owner_required_callback(call, func_to_run):
     if call.from_user.id != OWNER_ID:
@@ -2843,16 +2447,15 @@ def owner_required_callback(call, func_to_run):
     func_to_run(call)
 
 def pending_approvals_callback(call):
-    """Callback for pending approvals button"""
     bot.answer_callback_query(call.id)
     _logic_pending_approvals(call.message)
 
-# --- New Send Command Callback Functions ---
+# --- Send Command Callback Functions ---
 def send_command_callback(call):
     bot.answer_callback_query(call.id)
     try:
         bot.edit_message_text("📤 Send Command Options:",
-                              call.message.chat.id, call.message.message_id, 
+                              call.message.chat.id, call.message.message_id,
                               reply_markup=create_send_command_menu())
     except Exception as e:
         logger.error(f"Error showing send command menu: {e}")
@@ -2908,7 +2511,7 @@ def upload_callback(call):
         limit_str = str(file_limit) if file_limit != float('inf') else "Unlimited"
         bot.answer_callback_query(call.id, f"⚠️ File limit ({current_files}/{limit_str}) reached.", show_alert=True)
         return
-    bot.answer_callback_query(call.id) 
+    bot.answer_callback_query(call.id)
     if user_id in admin_ids:
         bot.send_message(call.message.chat.id, "📤 Send your Python (`.py`), JS (`.js`), or ZIP (`.zip`) file.\n"
                                                "✅ Admin files are automatically approved and hosted.")
@@ -2918,7 +2521,7 @@ def upload_callback(call):
 
 def check_files_callback(call):
     user_id = call.from_user.id
-    chat_id = call.message.chat.id 
+    chat_id = call.message.chat.id
     user_files_list = user_files.get(user_id, [])
     if not user_files_list:
         bot.answer_callback_query(call.id, "⚠️ No files uploaded.", show_alert=True)
@@ -2928,9 +2531,9 @@ def check_files_callback(call):
             bot.edit_message_text("📂 Your files:\n\n(No files uploaded)", chat_id, call.message.message_id, reply_markup=markup)
         except Exception as e: logger.error(f"Error editing msg for empty file list: {e}")
         return
-    bot.answer_callback_query(call.id) 
-    markup = types.InlineKeyboardMarkup(row_width=1) 
-    for file_name, file_type in sorted(user_files_list): 
+    bot.answer_callback_query(call.id)
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    for file_name, file_type in sorted(user_files_list):
         is_running = is_bot_running(user_id, file_name)
         status_icon = "🟢 Running" if is_running else "🔴 Stopped"
         btn_text = f"{file_name} ({file_type}) - {status_icon}"
@@ -2939,8 +2542,8 @@ def check_files_callback(call):
     try:
         bot.edit_message_text("📂 Your files:\nClick to manage.", chat_id, call.message.message_id, reply_markup=markup, parse_mode='Markdown')
     except telebot.apihelper.ApiTelegramException as e:
-         if "message is not modified" in str(e): logger.warning("Msg not modified (files).")
-         else: logger.error(f"Error editing msg for file list: {e}")
+        if "message is not modified" in str(e): logger.warning("Msg not modified (files).")
+        else: logger.error(f"Error editing msg for file list: {e}")
     except Exception as e: logger.error(f"Unexpected error editing msg for file list: {e}", exc_info=True)
 
 def file_control_callback(call):
@@ -2959,13 +2562,13 @@ def file_control_callback(call):
         if not any(f[0] == file_name for f in user_files_list):
             logger.warning(f"File '{file_name}' not found for user {script_owner_id} during control.")
             bot.answer_callback_query(call.id, "⚠️ File not found.", show_alert=True)
-            check_files_callback(call) 
+            check_files_callback(call)
             return
 
-        bot.answer_callback_query(call.id) 
+        bot.answer_callback_query(call.id)
         is_running = is_bot_running(script_owner_id, file_name)
         status_text = '🟢 Running' if is_running else '🔴 Stopped'
-        file_type = next((f[1] for f in user_files_list if f[0] == file_name), '?') 
+        file_type = next((f[1] for f in user_files_list if f[0] == file_name), '?')
         try:
             bot.edit_message_text(
                 f"⚙️ Controls for: `{file_name}` ({file_type}) of User `{script_owner_id}`\nStatus: {status_text}",
@@ -2974,8 +2577,8 @@ def file_control_callback(call):
                 parse_mode='Markdown'
             )
         except telebot.apihelper.ApiTelegramException as e:
-             if "message is not modified" in str(e): logger.warning(f"Msg not modified (controls for {file_name})")
-             else: raise 
+            if "message is not modified" in str(e): logger.warning(f"Msg not modified (controls for {file_name})")
+            else: raise
     except (ValueError, IndexError) as ve:
         logger.error(f"Error parsing file control callback: {ve}. Data: '{call.data}'")
         bot.answer_callback_query(call.id, "Error: Invalid action data.", show_alert=True)
@@ -3021,10 +2624,10 @@ def start_bot_callback(call):
         elif file_type == 'js':
             threading.Thread(target=run_js_script, args=(file_path, script_owner_id, user_folder, file_name, call.message)).start()
         else:
-             bot.send_message(chat_id_for_reply, f"❌ Error: Unknown file type '{file_type}' for '{file_name}'."); return 
+            bot.send_message(chat_id_for_reply, f"❌ Error: Unknown file type '{file_type}' for '{file_name}'."); return
 
         time.sleep(1.5)
-        is_now_running = is_bot_running(script_owner_id, file_name) 
+        is_now_running = is_bot_running(script_owner_id, file_name)
         status_text = '🟢 Running' if is_now_running else '🟡 Starting (or failed, check logs/replies)'
         try:
             bot.edit_message_text(
@@ -3033,8 +2636,8 @@ def start_bot_callback(call):
                 reply_markup=create_control_buttons(script_owner_id, file_name, is_now_running), parse_mode='Markdown'
             )
         except telebot.apihelper.ApiTelegramException as e:
-             if "message is not modified" in str(e): logger.warning(f"Msg not modified after starting {file_name}")
-             else: raise
+            if "message is not modified" in str(e): logger.warning(f"Msg not modified after starting {file_name}")
+            else: raise
     except (ValueError, IndexError) as e:
         logger.error(f"Error parsing start callback '{call.data}': {e}")
         bot.answer_callback_query(call.id, "Error: Invalid start command.", show_alert=True)
@@ -3063,16 +2666,16 @@ def stop_bot_callback(call):
         if not file_info:
             bot.answer_callback_query(call.id, "⚠️ File not found.", show_alert=True); check_files_callback(call); return
 
-        file_type = file_info[1] 
+        file_type = file_info[1]
         script_key = f"{script_owner_id}_{file_name}"
 
-        if not is_bot_running(script_owner_id, file_name): 
+        if not is_bot_running(script_owner_id, file_name):
             bot.answer_callback_query(call.id, f"⚠️ Script '{file_name}' already stopped.", show_alert=True)
             try:
-                 bot.edit_message_text(
-                     f"⚙️ Controls for: `{file_name}` ({file_type}) of User `{script_owner_id}`\nStatus: 🔴 Stopped",
-                     chat_id_for_reply, call.message.message_id,
-                     reply_markup=create_control_buttons(script_owner_id, file_name, False), parse_mode='Markdown')
+                bot.edit_message_text(
+                    f"⚙️ Controls for: `{file_name}` ({file_type}) of User `{script_owner_id}`\nStatus: 🔴 Stopped",
+                    chat_id_for_reply, call.message.message_id,
+                    reply_markup=create_control_buttons(script_owner_id, file_name, False), parse_mode='Markdown')
             except Exception as e: logger.error(f"Error updating buttons (already stopped): {e}")
             return
 
@@ -3090,8 +2693,8 @@ def stop_bot_callback(call):
                 reply_markup=create_control_buttons(script_owner_id, file_name, False), parse_mode='Markdown'
             )
         except telebot.apihelper.ApiTelegramException as e:
-             if "message is not modified" in str(e): logger.warning(f"Msg not modified after stopping {file_name}")
-             else: raise
+            if "message is not modified" in str(e): logger.warning(f"Msg not modified after stopping {file_name}")
+            else: raise
     except (ValueError, IndexError) as e:
         logger.error(f"Error parsing stop callback '{call.data}': {e}")
         bot.answer_callback_query(call.id, "Error: Invalid stop command.", show_alert=True)
@@ -3130,7 +2733,7 @@ def restart_bot_callback(call):
             process_info = bot_scripts.get(script_key)
             if process_info: kill_process_tree(process_info)
             if script_key in bot_scripts: del bot_scripts[script_key]
-            time.sleep(1.5) 
+            time.sleep(1.5)
 
         logger.info(f"Restart: Starting script {script_key}...")
         if file_type == 'py':
@@ -3138,10 +2741,10 @@ def restart_bot_callback(call):
         elif file_type == 'js':
             threading.Thread(target=run_js_script, args=(file_path, script_owner_id, user_folder, file_name, call.message)).start()
         else:
-             bot.send_message(chat_id_for_reply, f"❌ Unknown type '{file_type}' for '{file_name}'."); return
+            bot.send_message(chat_id_for_reply, f"❌ Unknown type '{file_type}' for '{file_name}'."); return
 
-        time.sleep(1.5) 
-        is_now_running = is_bot_running(script_owner_id, file_name) 
+        time.sleep(1.5)
+        is_now_running = is_bot_running(script_owner_id, file_name)
         status_text = '🟢 Running' if is_now_running else '🟡 Starting (or failed)'
         try:
             bot.edit_message_text(
@@ -3150,8 +2753,8 @@ def restart_bot_callback(call):
                 reply_markup=create_control_buttons(script_owner_id, file_name, is_now_running), parse_mode='Markdown'
             )
         except telebot.apihelper.ApiTelegramException as e:
-             if "message is not modified" in str(e): logger.warning(f"Msg not modified (restart {file_name})")
-             else: raise
+            if "message is not modified" in str(e): logger.warning(f"Msg not modified (restart {file_name})")
+            else: raise
     except (ValueError, IndexError) as e:
         logger.error(f"Error parsing restart callback '{call.data}': {e}")
         bot.answer_callback_query(call.id, "Error: Invalid restart command.", show_alert=True)
@@ -3186,7 +2789,7 @@ def delete_bot_callback(call):
             process_info = bot_scripts.get(script_key)
             if process_info: kill_process_tree(process_info)
             if script_key in bot_scripts: del bot_scripts[script_key]
-            time.sleep(0.5) 
+            time.sleep(0.5)
 
         user_folder = get_user_folder(script_owner_id)
         file_path = os.path.join(user_folder, file_name)
@@ -3236,23 +2839,23 @@ def logs_bot_callback(call):
         if not os.path.exists(log_path):
             bot.answer_callback_query(call.id, f"⚠️ No logs for '{file_name}'.", show_alert=True); return
 
-        bot.answer_callback_query(call.id) 
+        bot.answer_callback_query(call.id)
         try:
             log_content = ""; file_size = os.path.getsize(log_path)
             max_log_kb = 100; max_tg_msg = 4096
             if file_size == 0: log_content = "(Log empty)"
             elif file_size > max_log_kb * 1024:
-                 with open(log_path, 'rb') as f: f.seek(-max_log_kb * 1024, os.SEEK_END); log_bytes = f.read()
-                 log_content = log_bytes.decode('utf-8', errors='ignore')
-                 log_content = f"(Last {max_log_kb} KB)\n...\n" + log_content
+                with open(log_path, 'rb') as f: f.seek(-max_log_kb * 1024, os.SEEK_END); log_bytes = f.read()
+                log_content = log_bytes.decode('utf-8', errors='ignore')
+                log_content = f"(Last {max_log_kb} KB)\n...\n" + log_content
             else:
-                 with open(log_path, 'r', encoding='utf-8', errors='ignore') as f: log_content = f.read()
+                with open(log_path, 'r', encoding='utf-8', errors='ignore') as f: log_content = f.read()
 
             if len(log_content) > max_tg_msg:
                 log_content = log_content[-max_tg_msg:]
                 first_nl = log_content.find('\n')
                 if first_nl != -1: log_content = "...\n" + log_content[first_nl+1:]
-                else: log_content = "...\n" + log_content 
+                else: log_content = "...\n" + log_content
             if not log_content.strip(): log_content = "(No visible content)"
 
             bot.send_message(chat_id_for_reply, f"📜 Logs for `{file_name}` (User `{script_owner_id}`):\n```\n{log_content}\n```", parse_mode='Markdown')
@@ -3269,30 +2872,30 @@ def logs_bot_callback(call):
 def speed_callback(call):
     user_id = call.from_user.id
     chat_id = call.message.chat.id
-    start_cb_ping_time = time.time() 
+    start_cb_ping_time = time.time()
     try:
         bot.edit_message_text("🏃 Testing speed...", chat_id, call.message.message_id)
-        bot.send_chat_action(chat_id, 'typing') 
+        bot.send_chat_action(chat_id, 'typing')
         response_time = round((time.time() - start_cb_ping_time) * 1000, 2)
         status = "🔓 Unlocked" if not bot_locked else "🔒 Locked"
         if user_id == OWNER_ID: user_level = "🤍 Owner"
         elif user_id in admin_ids: user_level = "🌙 Admin"
         elif user_id in user_subscriptions and user_subscriptions[user_id].get('expiry', datetime.min) > datetime.now(): user_level = "⭐ Premium"
         else: user_level = "🆓 Free User"
-        
+
         pending_count = get_pending_files_count()
         pending_msg = f"\n📥 Pending Files: {pending_count}" if user_id in admin_ids and pending_count > 0 else ""
-        
+
         speed_msg = (f"⚡ Bot Speed & Status:\n\n⏱️ API Response Time: {response_time} ms\n"
                      f"🚦 Bot Status: {status}\n"
                      f"👤 Your Level: {user_level}{pending_msg}")
-        bot.answer_callback_query(call.id) 
+        bot.answer_callback_query(call.id)
         bot.edit_message_text(speed_msg, chat_id, call.message.message_id, reply_markup=create_main_menu_inline(user_id))
     except Exception as e:
-         logger.error(f"Error during speed test (cb): {e}", exc_info=True)
-         bot.answer_callback_query(call.id, "Error in speed test.", show_alert=True)
-         try: bot.edit_message_text("〽️ Main Menu", chat_id, call.message.message_id, reply_markup=create_main_menu_inline(user_id))
-         except Exception: pass
+        logger.error(f"Error during speed test (cb): {e}", exc_info=True)
+        bot.answer_callback_query(call.id, "Error in speed test.", show_alert=True)
+        try: bot.edit_message_text("〽️ Main Menu", chat_id, call.message.message_id, reply_markup=create_main_menu_inline(user_id))
+        except Exception: pass
 
 def back_to_main_callback(call):
     user_id = call.from_user.id
@@ -3310,10 +2913,10 @@ def back_to_main_callback(call):
             expiry_info = f"\n⏳ Subscription expires in: {days_left} days"
         else: user_status = "🆓 Free User (Expired Sub)"
     else: user_status = "🆓 Free User"
-    
+
     pending_count = get_pending_files_count()
     pending_msg = f"\n📥 Pending Files: {pending_count}" if user_id in admin_ids and pending_count > 0 else ""
-    
+
     main_menu_text = (f"〽️ Welcome back, {call.from_user.first_name}!\n\n🆔 ID: `{user_id}`\n"
                       f"🔰 Status: {user_status}{expiry_info}\n📁 Files: {current_files} / {limit_str}{pending_msg}\n\n"
                       f"👇 Use buttons or type commands.")
@@ -3322,8 +2925,8 @@ def back_to_main_callback(call):
         bot.edit_message_text(main_menu_text, chat_id, call.message.message_id,
                               reply_markup=create_main_menu_inline(user_id), parse_mode='Markdown')
     except telebot.apihelper.ApiTelegramException as e:
-         if "message is not modified" in str(e): logger.warning("Msg not modified (back_to_main).")
-         else: logger.error(f"API error on back_to_main: {e}")
+        if "message is not modified" in str(e): logger.warning("Msg not modified (back_to_main).")
+        else: logger.error(f"API error on back_to_main: {e}")
     except Exception as e: logger.error(f"Error handling back_to_main: {e}", exc_info=True)
 
 # --- Admin Callback Implementations ---
@@ -3372,10 +2975,10 @@ def process_broadcast_message(message):
 
     broadcast_content = message.text
     if not broadcast_content and not (message.photo or message.video or message.document or message.sticker or message.voice or message.audio):
-         bot.reply_to(message, "⚠️ Cannot broadcast empty message. Send text or media, or /cancel.")
-         msg = bot.send_message(message.chat.id, "📢 Send broadcast message or /cancel.")
-         bot.register_next_step_handler(msg, process_broadcast_message)
-         return
+        bot.reply_to(message, "⚠️ Cannot broadcast empty message. Send text or media, or /cancel.")
+        msg = bot.send_message(message.chat.id, "📢 Send broadcast message or /cancel.")
+        bot.register_next_step_handler(msg, process_broadcast_message)
+        return
 
     target_count = len(active_users)
     markup = types.InlineKeyboardMarkup()
@@ -3383,7 +2986,7 @@ def process_broadcast_message(message):
                types.InlineKeyboardButton("❌ Cancel", callback_data="cancel_broadcast"))
 
     preview_text = broadcast_content[:1000].strip() if broadcast_content else "(Media message)"
-    bot.reply_to(message, f"⚠️ Confirm Broadcast:\n\n```\n{preview_text}\n```\n" 
+    bot.reply_to(message, f"⚠️ Confirm Broadcast:\n\n```\n{preview_text}\n```\n"
                           f"To **{target_count}** users. Sure?", reply_markup=markup, parse_mode='Markdown')
 
 def handle_confirm_broadcast(call):
@@ -3411,11 +3014,11 @@ def handle_confirm_broadcast(call):
         bot.edit_message_text(f"📢 Broadcasting to {len(active_users)} users...",
                               chat_id, call.message.message_id, reply_markup=None)
         thread = threading.Thread(target=execute_broadcast, args=(
-            broadcast_text, broadcast_photo_id, broadcast_video_id, 
+            broadcast_text, broadcast_photo_id, broadcast_video_id,
             original_message.caption if (broadcast_photo_id or broadcast_video_id) else None,
             chat_id))
         thread.start()
-    except ValueError as ve: 
+    except ValueError as ve:
         logger.error(f"Error retrieving msg for broadcast confirm: {ve}")
         bot.edit_message_text(f"❌ Error starting broadcast: {ve}", chat_id, call.message.message_id, reply_markup=None)
     except Exception as e:
@@ -3431,7 +3034,7 @@ def handle_cancel_broadcast(call):
 
 def execute_broadcast(broadcast_text, photo_id, video_id, caption, admin_chat_id):
     sent_count = 0; failed_count = 0; blocked_count = 0
-    start_exec_time = time.time() 
+    start_exec_time = time.time()
     users_to_broadcast = list(active_users); total_users = len(users_to_broadcast)
     logger.info(f"Executing broadcast to {total_users} users.")
     batch_size = 25; delay_batches = 1.5
@@ -3447,12 +3050,12 @@ def execute_broadcast(broadcast_text, photo_id, video_id, caption, admin_chat_id
             sent_count += 1
         except telebot.apihelper.ApiTelegramException as e:
             err_desc = str(e).lower()
-            if any(s in err_desc for s in ["bot was blocked", "user is deactivated", "chat not found", "kicked from", "restricted"]): 
+            if any(s in err_desc for s in ["bot was blocked", "user is deactivated", "chat not found", "kicked from", "restricted"]):
                 logger.warning(f"Broadcast failed to {user_id_bc}: User blocked/inactive.")
                 blocked_count += 1
             elif "flood control" in err_desc or "too many requests" in err_desc:
                 retry_after = 5; match = re.search(r"retry after (\d+)", err_desc)
-                if match: retry_after = int(match.group(1)) + 1 
+                if match: retry_after = int(match.group(1)) + 1
                 logger.warning(f"Flood control. Sleeping {retry_after}s...")
                 time.sleep(retry_after)
                 try:
@@ -3467,7 +3070,7 @@ def execute_broadcast(broadcast_text, photo_id, video_id, caption, admin_chat_id
         if (i + 1) % batch_size == 0 and i < total_users - 1:
             logger.info(f"Broadcast batch {i//batch_size + 1} sent. Sleeping {delay_batches}s...")
             time.sleep(delay_batches)
-        elif i % 5 == 0: time.sleep(0.2) 
+        elif i % 5 == 0: time.sleep(0.2)
 
     duration = round(time.time() - start_exec_time, 2)
     result_msg = (f"📢 Broadcast Complete!\n\n✅ Sent: {sent_count}\n❌ Failed: {failed_count}\n"
@@ -3489,7 +3092,7 @@ def add_admin_init_callback(call):
     bot.register_next_step_handler(msg, process_add_admin_id)
 
 def process_add_admin_id(message):
-    owner_id_check = message.from_user.id 
+    owner_id_check = message.from_user.id
     if owner_id_check != OWNER_ID: bot.reply_to(message, "⚠️ Owner only."); return
     if message.text.lower() == '/cancel': bot.reply_to(message, "Admin promotion cancelled."); return
     try:
@@ -3497,7 +3100,7 @@ def process_add_admin_id(message):
         if new_admin_id <= 0: raise ValueError("ID must be positive")
         if new_admin_id == OWNER_ID: bot.reply_to(message, "⚠️ Owner is already Owner."); return
         if new_admin_id in admin_ids: bot.reply_to(message, f"⚠️ User `{new_admin_id}` already Admin."); return
-        add_admin_db(new_admin_id) 
+        add_admin_db(new_admin_id)
         logger.warning(f"Admin {new_admin_id} added by Owner {owner_id_check}.")
         bot.reply_to(message, f"✅ User `{new_admin_id}` promoted to Admin.")
         try: bot.send_message(new_admin_id, "🎉 Congrats! You are now an Admin.")
@@ -3522,7 +3125,7 @@ def process_remove_admin_id(message):
         if admin_id_remove <= 0: raise ValueError("ID must be positive")
         if admin_id_remove == OWNER_ID: bot.reply_to(message, "⚠️ Owner cannot remove self."); return
         if admin_id_remove not in admin_ids: bot.reply_to(message, f"⚠️ User `{admin_id_remove}` not Admin."); return
-        if remove_admin_db(admin_id_remove): 
+        if remove_admin_db(admin_id_remove):
             logger.warning(f"Admin {admin_id_remove} removed by Owner {owner_id_check}.")
             bot.reply_to(message, f"✅ Admin `{admin_id_remove}` removed.")
             try: bot.send_message(admin_id_remove, "ℹ️ You are no longer an Admin.")
@@ -3549,11 +3152,11 @@ def add_subscription_init_callback(call):
     bot.register_next_step_handler(msg, process_add_subscription_details)
 
 def process_add_subscription_details(message):
-    admin_id_check = message.from_user.id 
+    admin_id_check = message.from_user.id
     if admin_id_check not in admin_ids: bot.reply_to(message, "⚠️ Not authorized."); return
     if message.text.lower() == '/cancel': bot.reply_to(message, "Sub add cancelled."); return
     try:
-        parts = message.text.split();
+        parts = message.text.split()
         if len(parts) != 2: raise ValueError("Incorrect format")
         sub_user_id = int(parts[0].strip()); days = int(parts[1].strip())
         if sub_user_id <= 0 or days <= 0: raise ValueError("User ID/days must be positive")
@@ -3588,7 +3191,7 @@ def process_remove_subscription_id(message):
         if sub_user_id_remove <= 0: raise ValueError("ID must be positive")
         if sub_user_id_remove not in user_subscriptions:
             bot.reply_to(message, f"⚠️ User `{sub_user_id_remove}` no active sub in memory."); return
-        remove_subscription_db(sub_user_id_remove) 
+        remove_subscription_db(sub_user_id_remove)
         logger.warning(f"Sub removed for {sub_user_id_remove} by admin {admin_id_check}.")
         bot.reply_to(message, f"✅ Sub for `{sub_user_id_remove}` removed.")
         try: bot.send_message(sub_user_id_remove, "ℹ️ Your subscription removed by admin.")
@@ -3631,7 +3234,7 @@ def process_check_subscription_id(message):
 # --- Cleanup Function ---
 def cleanup():
     logger.warning("Shutdown. Cleaning up processes...")
-    script_keys_to_stop = list(bot_scripts.keys()) 
+    script_keys_to_stop = list(bot_scripts.keys())
     if not script_keys_to_stop: logger.info("No scripts running. Exiting."); return
     logger.info(f"Stopping {len(script_keys_to_stop)} scripts...")
     for key in script_keys_to_stop:
@@ -3644,7 +3247,8 @@ atexit.register(cleanup)
 if __name__ == '__main__':
     logger.info("="*40 + "\n🤖 Bot Starting Up...\n" + f"🐍 Python: {sys.version.split()[0]}\n" +
                 f"🔧 Base Dir: {BASE_DIR}\n📁 Upload Dir: {UPLOAD_BOTS_DIR}\n" +
-                f"📊 Data Dir: {IROTECH_DIR}\n🔑 Owner ID: {OWNER_ID}\n🛡️ Admins: {admin_ids}\n" + "="*40)
+                f"📊 Data Dir: {IROTECH_DIR}\n🔑 Owner ID: {OWNER_ID}\n🛡️ Admins: {admin_ids}\n" +
+                f"🔐 Password Required: {PASSWORD_REQUIRED}\n" + "="*40)
     keep_alive()
     logger.info("🚀 Starting polling...")
     while True:
