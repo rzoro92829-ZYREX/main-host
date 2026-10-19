@@ -54,8 +54,8 @@ def keep_alive():
 
 # --- Configuration ---
 TOKEN = os.environ.get("BOT_TOKEN", )
-OWNER_ID = int(os.environ.get("OWNER_ID", 7769604048))
-ADMIN_ID = int(os.environ.get("ADMIN_ID", 7769604048))
+OWNER_ID = int(os.environ.get("OWNER_ID", 8753954131))
+ADMIN_ID = int(os.environ.get("ADMIN_ID", 8753954131))
 YOUR_USERNAME = os.environ.get("YOUR_USERNAME", '@zyrex_14_18')
 UPDATE_CHANNEL = os.environ.get("UPDATE_CHANNEL", 'https://t.me/Elite_404OP')
 
